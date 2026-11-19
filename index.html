@@ -4,680 +4,657 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SyncSpace — Group Assignment Coordinator</title>
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Inter Font -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-          },
-          boxShadow: {
-            'soft': '0 2px 10px -2px rgba(15, 23, 42, 0.06), 0 1px 3px -1px rgba(15, 23, 42, 0.04)',
-            'float': '0 12px 32px -4px rgba(15, 23, 42, 0.14), 0 4px 12px -2px rgba(15, 23, 42, 0.06)',
-          }
-        }
-      }
-    };
-  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      -webkit-font-smoothing: antialiased;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: #f8fafc;
       color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
     }
-    /* Prevent text selection while dragging on the availability calendar */
     .no-select {
       user-select: none;
       -webkit-user-select: none;
     }
-    /* Custom subtle scrollbars */
-    ::-webkit-scrollbar {
+    .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
       height: 6px;
     }
-    ::-webkit-scrollbar-track {
-      background: transparent;
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 999px;
     }
-    ::-webkit-scrollbar-thumb {
+    .custom-scrollbar::-webkit-scrollbar-thumb {
       background: #cbd5e1;
-      border-radius: 9999px;
+      border-radius: 999px;
     }
-    ::-webkit-scrollbar-thumb:hover {
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
       background: #94a3b8;
     }
-    /* Smooth animations */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-fade-in {
-      animation: fadeIn 0.22s ease-out forwards;
-    }
-    @keyframes pulseSoft {
+    @keyframes pulse-soft {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
     }
     .animate-pulse-soft {
-      animation: pulseSoft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    /* Calendar cell hover highlight */
-    .cal-cell {
-      transition: transform 0.08s ease, background-color 0.12s ease, box-shadow 0.12s ease;
-    }
-    .cal-cell:hover {
-      z-index: 10;
-      box-shadow: inset 0 0 0 2px #4f46e5;
+      animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
 
-  <!-- Toast Notification Container -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-[calc(100vw-2rem)] pointer-events-none"></div>
+  <!-- Toast / Message Box Container (Replaces alert/confirm) -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
 
-  <!-- Floating Calendar Hover Tooltip -->
-  <div id="calendar-tooltip" class="fixed z-50 hidden pointer-events-none bg-slate-900/95 backdrop-blur-md text-white rounded-xl shadow-float p-3.5 w-64 border border-slate-700/80 text-xs transition-opacity duration-100">
-    <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-700/80">
-      <div>
-        <div id="tt-date" class="font-semibold text-slate-100"></div>
-        <div id="tt-time" class="text-slate-400 text-[11px]"></div>
+  <!-- Hover Tooltip for 30-Min Availability Grid -->
+  <div id="slot-tooltip" class="fixed z-50 pointer-events-none hidden bg-slate-900/95 backdrop-blur-sm text-white text-xs rounded-xl shadow-xl p-3 border border-slate-700/80 max-w-xs transition-opacity duration-75">
+    <div id="tooltip-time" class="font-semibold text-indigo-300 mb-1"></div>
+    <div id="tooltip-count" class="text-[11px] text-slate-300 mb-1.5"></div>
+    <div id="tooltip-members" class="flex flex-wrap gap-1"></div>
+  </div>
+
+  <!-- Poke Members Modal (Host Only) -->
+  <div id="poke-modal" class="fixed inset-0 z-40 hidden bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-5">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 mb-1.5">
+            Host Action
+          </span>
+          <h3 class="text-lg font-bold text-slate-900">Poke Members for Availability</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Send a live alert banner asking teammates to fill in their free slots for a specific timeframe.</p>
+        </div>
+        <button id="close-poke-modal" class="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
-      <span id="tt-badge" class="px-2 py-0.5 rounded-full font-semibold text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"></span>
+
+      <form id="poke-form" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">From Date</label>
+            <input type="date" id="poke-start-date" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">To Date</label>
+            <input type="date" id="poke-end-date" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Start Window</label>
+            <select id="poke-start-time" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">End Window</label>
+            <select id="poke-end-time" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Custom Note (Optional)</label>
+          <input type="text" id="poke-note" placeholder="e.g., Need to lock in our sprint sync before Thursday!" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" id="cancel-poke-btn" class="px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-sm transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            Send Poke Alert
+          </button>
+        </div>
+      </form>
     </div>
-    <div id="tt-members" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
+  </div>
+
+  <!-- Invite / Email Modal -->
+  <div id="invite-modal" class="fixed inset-0 z-40 hidden bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-5">
+      <div class="flex items-start justify-between">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900">Invite Teammates</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Share the direct room link or send an email invite with the due date included.</p>
+        </div>
+        <button id="close-invite-modal" class="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Direct Room Link</label>
+          <div class="flex gap-2">
+            <input type="text" id="invite-link-input" readonly class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-700 font-mono" />
+            <button type="button" id="copy-invite-link-btn" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shrink-0 transition">
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-4">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Teammate Email Addresses</label>
+          <input type="text" id="invite-emails-input" placeholder="alex@uni.edu, sam@uni.edu" class="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+          <p class="text-[11px] text-slate-400 mt-1">Separate multiple emails with commas.</p>
+        </div>
+
+        <button type="button" id="send-email-invite-btn" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          Open Email Client with Invite
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- ==================== LANDING VIEW ==================== -->
-  <div id="landing-view" class="flex-1 flex flex-col justify-center items-center px-4 py-10 sm:py-16 relative">
-    <!-- Persistent Version Badge (Landing) -->
-    <div class="fixed top-3 right-4 z-40">
-      <span class="version-badge inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-slate-200 text-[11px] font-mono font-bold text-slate-600 shadow-xs">v1.0.2</span>
-    </div>
-    <div class="w-full max-w-4xl">
-      <!-- Brand Header -->
-      <div class="text-center mb-10 animate-fade-in">
-        <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold mb-4">
-          <span class="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-          Real-Time Group Assignment Workspace
+  <div id="landing-view" class="flex-1 flex flex-col justify-between">
+    <header class="border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-20">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <a href="#/home" id="landing-logo-btn" class="flex items-center gap-2.5 group focus:outline-none" title="Go to Home">
+          <div class="w-9 h-9 rounded-xl bg-indigo-600 group-hover:bg-indigo-700 flex items-center justify-center text-white font-bold shadow-sm transition">
+            S
+          </div>
+          <span class="font-bold text-lg tracking-tight text-slate-900">SyncSpace</span>
+        </a>
+        <div class="flex items-center gap-2.5">
+          <span class="text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">v1.0.3</span>
+          <span class="hidden sm:inline-block text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+            Group Assignment Rooms &bull; 30-Min Overlap &bull; AI Delegator
+          </span>
         </div>
-        <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 mb-3">
-          Coordinate group work with <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-emerald-600">SyncSpace</span>
+      </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-14">
+      <div class="text-center max-w-2xl mx-auto mb-10">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold mb-4 border border-indigo-100">
+          <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+          Built for Student Teams &amp; Collaborative Sprints
+        </div>
+        <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+          Coordinate schedules &amp; delegate assignments in one room.
         </h1>
-        <p class="text-slate-600 text-sm sm:text-base max-w-xl mx-auto">
-          Find overlapping meeting times on a 30-minute heatmap, let Gemini AI break down and delegate your assignment, and track everyone's tasks until the due date.
+        <p class="text-slate-600 mt-4 text-sm sm:text-base leading-relaxed">
+          Spin up a temporary workspace that stays active until your assignment due date. Overlap 30-minute availability blocks, let Gemini break down the prompt into tasks, and track progress together.
         </p>
       </div>
 
-      <!-- URL Auto-Join Notice -->
-      <div id="url-room-banner" class="hidden mb-6 p-4 rounded-2xl bg-indigo-600 text-white shadow-soft flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+      <!-- URL Join Banner (Shown if ?room=CODE is present in URL) -->
+      <div id="url-room-banner" class="hidden max-w-xl mx-auto mb-6 bg-indigo-600 text-white rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
           </div>
           <div>
-            <p class="font-semibold text-sm">You've been invited to room <span id="url-room-code-text" class="font-mono bg-white/20 px-1.5 py-0.5 rounded"></span></p>
-            <p class="text-indigo-100 text-xs">Enter your name below to join your team right away.</p>
+            <p class="text-xs text-indigo-200 font-medium">You were invited to room</p>
+            <p id="url-room-code-text" class="font-bold text-base tracking-wide"></p>
           </div>
         </div>
+        <span class="text-xs bg-white/20 px-3 py-1.5 rounded-xl font-medium">Enter your name below to join &rarr;</span>
       </div>
 
-      <!-- Create / Join Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <!-- Create Room Card -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-6 sm:p-7 flex flex-col">
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7">
           <div class="flex items-center gap-3 mb-5">
-            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             </div>
             <div>
-              <h2 class="text-lg font-bold text-slate-900">Create a New Room</h2>
-              <p class="text-xs text-slate-500">You'll automatically become the Room Host</p>
+              <h2 class="text-lg font-bold text-slate-900">Create Assignment Room</h2>
+              <p class="text-xs text-slate-500">Active until the official assignment due date</p>
             </div>
           </div>
 
-          <form id="create-room-form" class="space-y-4 flex-1 flex flex-col">
+          <form id="create-room-form" class="space-y-4">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Your Name</label>
-              <input id="create-name" type="text" required placeholder="e.g. Maya Patel" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition" />
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Your Name (Room Host)</label>
+              <input type="text" id="create-name" required placeholder="e.g., Jordan Taylor" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
             </div>
+
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assignment / Room Title</label>
-              <input id="create-title" type="text" required placeholder="e.g. CS 301 Final Research Presentation" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition" />
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Assignment / Project Title</label>
+              <input type="text" id="create-title" required placeholder="e.g., CS 340 Distributed Systems Final Report" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
             </div>
+
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assignment Due Date & Time</label>
-              <input id="create-due" type="datetime-local" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition" />
-              <p class="text-[11px] text-slate-400 mt-1">The room stays active with a live countdown until this deadline.</p>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Assignment Due Date &amp; Time</label>
+              <input type="datetime-local" id="create-due" required class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
             </div>
-            <div class="pt-2 mt-auto">
-              <button type="submit" id="create-submit-btn" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition flex items-center justify-center gap-2">
-                <span>Create Room & Launch</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-              </button>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Email Teammates (Optional)</label>
+              <input type="text" id="create-emails" placeholder="teammate1@school.edu, teammate2@school.edu" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+              <p class="text-[11px] text-slate-400 mt-1">If provided, we'll prepare an email invite with your room link right after creation.</p>
             </div>
+
+            <button type="submit" id="create-submit-btn" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+              <span>Create Room &amp; Launch</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </button>
           </form>
         </div>
 
-        <!-- Join Room Card -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-6 sm:p-7 flex flex-col">
-          <div class="flex items-center gap-3 mb-5">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <!-- Join Room Card + Demo Option -->
+        <div class="space-y-6">
+          <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              </div>
+              <div>
+                <h2 class="text-lg font-bold text-slate-900">Join Existing Room</h2>
+                <p class="text-xs text-slate-500">Enter a room code or open an invite link</p>
+              </div>
             </div>
-            <div>
-              <h2 class="text-lg font-bold text-slate-900">Join an Existing Room</h2>
-              <p class="text-xs text-slate-500">Enter the room code shared by your host</p>
-            </div>
+
+            <form id="join-room-form" class="space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Room Code</label>
+                <input type="text" id="join-code" required placeholder="e.g., SYNC-4829" class="w-full px-3.5 py-2.5 text-sm uppercase font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none" />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Your Display Name</label>
+                <input type="text" id="join-name" required placeholder="e.g., Maya Patel" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none" />
+              </div>
+
+              <button type="submit" id="join-submit-btn" class="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl shadow-sm transition">
+                Join Room
+              </button>
+            </form>
           </div>
 
-          <form id="join-room-form" class="space-y-4 flex-1 flex flex-col">
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Your Name</label>
-              <input id="join-name" type="text" required placeholder="e.g. Jordan Lee" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition" />
+          <!-- Instant Solo Sandbox / Demo Room -->
+          <div class="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-slate-800">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">Testing solo?</span>
+                <h3 class="text-base font-bold mt-0.5">Launch Sample Group Room</h3>
+                <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                  Creates a live room pre-populated with 3 teammates, overlapping availability blocks, and sample tasks so you can test everything immediately.
+                </p>
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Room Code</label>
-              <input id="join-code" type="text" required placeholder="e.g. SYNC-4821" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-mono uppercase tracking-wider focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition" />
-            </div>
-            <div class="pt-2 mt-auto space-y-2.5">
-              <button type="submit" id="join-submit-btn" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition flex items-center justify-center gap-2">
-                <span>Join Room</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
-              </button>
-              <button type="button" id="demo-launch-btn" class="w-full py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs border border-indigo-200/70 transition flex items-center justify-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                <span>Quick Demo: Launch Sample Group Room (with 3 Teammates)</span>
-              </button>
-            </div>
-          </form>
+            <button type="button" id="demo-room-btn" class="mt-4 w-full py-2.5 px-4 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl border border-white/15 transition">
+              Quick Demo: Launch Sample Group Room
+            </button>
+          </div>
         </div>
       </div>
+    </main>
 
-      <!-- Sync Status Footer -->
-      <div class="mt-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-        <span id="auth-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-        <span id="auth-status-text">Connecting to real-time sync...</span>
+    <footer class="border-t border-slate-200 bg-white py-4 px-4 sm:px-6 text-center text-xs text-slate-400">
+      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span>SyncSpace &bull; Ephemeral Group Assignment Workspaces</span>
+        <span id="landing-sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse-soft"></span>
+          Connecting to real-time sync...
+        </span>
       </div>
-    </div>
+    </footer>
   </div>
 
-  <!-- ==================== ROOM WORKSPACE VIEW ==================== -->
-  <div id="room-view" class="hidden flex-1 flex flex-col min-h-screen">
-    <!-- Expired / Assignment Due Banner -->
-    <div id="expired-banner" class="hidden bg-rose-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-semibold flex items-center justify-center gap-2">
-      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <span>Assignment Due / Session Ended — The due date for this assignment has passed.</span>
-    </div>
-
+  <!-- ==================== ACTIVE ROOM VIEW ==================== -->
+  <div id="room-view" class="hidden flex-1 flex flex-col">
     <!-- Top Room Header -->
-    <header class="bg-white border-b border-slate-200/90 sticky top-0 z-30">
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-        <!-- Left: Brand + Room Info -->
+        <!-- Room Brand & Info -->
         <div class="flex items-center gap-3 min-w-0">
-          <button id="leave-room-btn" type="button" title="Back to Home Page" class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm hover:bg-indigo-700 active:scale-95 transition shrink-0 cursor-pointer">
+          <button id="leave-room-btn" title="Back to Home" class="w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-bold shrink-0 transition shadow-xs">
             S
           </button>
           <div class="min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="version-badge inline-flex items-center px-2 py-0.5 rounded-full bg-slate-900 text-white font-mono text-[10px] font-bold tracking-wide">v1.0.2</span>
-              <h1 id="header-room-title" class="font-bold text-slate-900 text-sm sm:text-base truncate max-w-[200px] sm:max-w-xs"></h1>
-              <button id="header-copy-code" title="Click to copy room code" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[11px] font-semibold transition">
-                <span id="header-room-code"></span>
-                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-              </button>
-              <span id="header-role-badge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"></span>
-              <span id="room-sync-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
-                <span id="room-sync-dot" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                <span id="room-sync-text">Syncing</span>
+              <h1 id="room-title-display" class="font-bold text-base sm:text-lg text-slate-900 truncate max-w-xs sm:max-w-md">Assignment Title</h1>
+              <span class="text-[11px] font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md shrink-0">v1.0.3</span>
+              <span id="room-code-badge" class="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-xs font-semibold border border-slate-200 cursor-pointer hover:bg-slate-200 transition" title="Click to copy room code">
+                SYNC-0000
+              </span>
+              <span id="role-badge" class="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-100">
+                Host
+              </span>
+              <span id="room-sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200" title="Real-time synchronization status">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Live Cloud Sync</span>
               </span>
             </div>
-            <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-              <span>Signed in as <strong id="header-user-name" class="text-slate-700"></strong></span>
-              <span>•</span>
-              <span id="header-member-count">1 member</span>
+            <div class="flex items-center gap-3 text-xs text-slate-500 mt-0.5 flex-wrap">
+              <span id="room-due-display" class="flex items-center gap-1">
+                Due: --
+              </span>
+              <span>&bull;</span>
+              <span id="room-countdown-display" class="font-semibold text-indigo-600">
+                Calculating time left...
+              </span>
             </div>
           </div>
         </div>
 
-        <!-- Right: Countdown + Actions -->
-        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <!-- Live Countdown Pill -->
-          <div id="countdown-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-            <svg class="w-4 h-4 text-indigo-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <div>
-              <span class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block leading-none">Due In</span>
-              <span id="countdown-timer" class="font-mono font-bold text-slate-800 text-xs">--d --h --m --s</span>
-            </div>
-          </div>
+        <!-- Room Quick Actions -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="add-sim-member-btn" class="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1.5" title="Add a simulated teammate to test overlaps & AI delegation">
+            <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+            <span class="hidden sm:inline">+ Simulate Teammate</span>
+            <span class="sm:hidden">+ Bot Peer</span>
+          </button>
 
-          <!-- Invite Button -->
-          <button id="open-invite-btn" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-            <span>Invite</span>
+          <button id="open-invite-btn" class="px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <span>Email / Invite</span>
           </button>
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between border-t border-slate-100">
-        <nav class="flex gap-1 -mb-px overflow-x-auto" aria-label="Room Sections">
-          <button data-tab="calendar" class="tab-btn active-tab relative px-4 py-3 text-xs sm:text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600 whitespace-nowrap flex items-center gap-2 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            <span>Availability Calendar</span>
-            <span id="tab-poke-dot" class="hidden w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-          </button>
-          <button data-tab="ai" class="tab-btn relative px-4 py-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap flex items-center gap-2 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            <span>AI Workload Delegator</span>
-            <span class="px-1.5 py-0.5 text-[10px] rounded-md bg-indigo-50 text-indigo-600 font-bold">Gemini</span>
-          </button>
-          <button data-tab="tasks" class="tab-btn relative px-4 py-3 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent whitespace-nowrap flex items-center gap-2 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-            <span>Members & To-Do List</span>
-            <span id="tab-tasks-badge" class="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-100 text-slate-600 font-bold">0</span>
-          </button>
-        </nav>
+      <!-- Session Expired Banner (Shown automatically when due date passes) -->
+      <div id="session-expired-banner" class="hidden bg-rose-600 text-white px-4 py-2 text-xs font-medium text-center">
+        This assignment's due date has passed and the room session has officially ended. Editing is locked in read-only archive mode.
+      </div>
 
-        <!-- Solo Testing Helper -->
-        <button id="add-mock-member-btn" title="Add a simulated teammate to test overlap & AI delegation" class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
-          <span>+ Simulate Teammate</span>
+      <!-- Active Host Poke Banners Container -->
+      <div id="poke-banners-container" class="max-w-7xl mx-auto px-4 sm:px-6"></div>
+
+      <!-- Navigation Tabs -->
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1 sm:gap-2 overflow-x-auto pt-1">
+        <button data-tab="calendar" class="room-tab-btn px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 whitespace-nowrap flex items-center gap-2 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>Availability Calendar</span>
+        </button>
+        <button data-tab="gemini" class="room-tab-btn px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap flex items-center gap-2 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span>AI Workload Delegator</span>
+        </button>
+        <button data-tab="todos" class="room-tab-btn px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap flex items-center gap-2 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <span>Members &amp; To-Do List</span>
+          <span id="todo-count-badge" class="px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded-full text-[11px]">0</span>
         </button>
       </div>
     </header>
 
-    <!-- Real-Time Poke Alert Container -->
-    <div id="poke-alerts-container" class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4 space-y-2 hidden"></div>
+    <!-- Main Room Content Area -->
+    <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex-1">
 
-    <!-- Main Tab Content Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-
-      <!-- ==================== TAB 1: AVAILABILITY CALENDAR ==================== -->
-      <section id="panel-calendar" class="space-y-5 animate-fade-in">
-        <!-- Toolbar Card -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-              Team Availability Heatmap
-              <span class="text-xs font-medium text-slate-400">(30-min increments)</span>
-            </h2>
-            <p class="text-xs text-slate-500 mt-0.5">Click and drag across time slots to paint your availability. Hover any cell to see who is free.</p>
+      <!-- ==================== TAB 1: 30-MIN AVAILABILITY CALENDAR ==================== -->
+      <section id="tab-calendar" class="room-tab-panel space-y-5">
+        <!-- Calendar Toolbar -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-base font-bold text-slate-900">Group Availability Heatmap (30-Min Increments)</h2>
+              <span class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Click or drag to mark when you're free
+              </span>
+            </div>
+            <p class="text-xs text-slate-500">
+              Overlapping green blocks reveal when the whole team can meet. Hover over any slot to see who is available.
+            </p>
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
-            <!-- Host Calendar Range Controls -->
-            <div id="host-calendar-controls" class="hidden flex flex-wrap items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80">
-              <span class="text-[11px] font-semibold text-slate-500">Range:</span>
-              <input id="cal-start-date" type="date" class="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-              <select id="cal-num-days" class="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
-                <option value="3">3 days</option>
-                <option value="5">5 days</option>
-                <option value="7" selected>7 days</option>
-                <option value="10">10 days</option>
-              </select>
+            <!-- Consecutive Day Range Controls -->
+            <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1">
+              <button id="cal-prev-days" class="p-1.5 hover:bg-white rounded-lg text-slate-600 transition" title="Previous days">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <span id="cal-range-label" class="text-xs font-semibold text-slate-700 px-2">Oct 12 - Oct 18</span>
+              <button id="cal-next-days" class="p-1.5 hover:bg-white rounded-lg text-slate-600 transition" title="Next days">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </button>
             </div>
 
-            <!-- Clear My Availability -->
-            <button id="clear-my-avail-btn" class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition">
+            <select id="cal-num-days" class="px-3 py-2 text-xs font-semibold border border-slate-200 rounded-xl bg-white text-slate-700 outline-none">
+              <option value="5">5 Days</option>
+              <option value="7" selected>7 Consecutive Days</option>
+              <option value="10">10 Days</option>
+            </select>
+
+            <button id="clear-my-avail-btn" class="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl transition">
               Clear Mine
             </button>
 
-            <!-- Host Poke Button -->
-            <button id="open-poke-btn" class="hidden inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-sm transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <!-- Host Only Poke Button -->
+            <button id="open-poke-modal-btn" class="hidden px-3.5 py-2 text-xs font-semibold text-amber-950 bg-amber-400 hover:bg-amber-500 rounded-xl shadow-xs transition flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
               <span>Poke Members</span>
             </button>
           </div>
         </div>
 
-        <!-- Legend & Top Overlapping Times Strip -->
+        <!-- Legend & Best Meeting Times Summary Bar -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <!-- Heatmap Legend -->
-          <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-4 flex flex-col justify-center">
-            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Overlap Legend</div>
-            <div class="flex items-center gap-2 flex-wrap text-xs">
-              <span class="inline-flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-slate-50 border border-slate-200"></span> 0%</span>
-              <span class="inline-flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-emerald-100 border border-emerald-200"></span> Low</span>
-              <span class="inline-flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-emerald-300 border border-emerald-400"></span> Mid</span>
-              <span class="inline-flex items-center gap-1.5"><span class="w-4 h-4 rounded bg-emerald-500"></span> High</span>
-              <span class="inline-flex items-center gap-1.5 font-semibold text-indigo-700"><span class="w-4 h-4 rounded bg-indigo-600 flex items-center justify-center text-[9px] text-white">★</span> 100% All</span>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+            <span class="text-xs font-semibold text-slate-700">Overlap Legend:</span>
+            <div class="flex items-center gap-2 text-[11px] font-medium text-slate-600">
+              <span class="inline-flex items-center gap-1"><span class="w-3.5 h-3.5 rounded bg-slate-100 border border-slate-200"></span> 0</span>
+              <span class="inline-flex items-center gap-1"><span class="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-200"></span> Partial</span>
+              <span class="inline-flex items-center gap-1"><span class="w-3.5 h-3.5 rounded bg-emerald-300 border border-emerald-400"></span> Most</span>
+              <span class="inline-flex items-center gap-1"><span class="w-3.5 h-3.5 rounded bg-emerald-600"></span> 100% All Free</span>
             </div>
-            <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-indigo-200"></span>
-              <span>Dot indicates slots where <strong>you</strong> are marked available</span>
+            <div class="w-full pt-1 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Your slots have a <span class="inline-block w-2 h-2 rounded-full bg-indigo-600 align-middle"></span> indigo dot</span>
+              <span id="member-count-pill" class="font-semibold text-slate-700">1 Member</span>
             </div>
           </div>
 
-          <!-- Best Meeting Times -->
-          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 shadow-soft p-4">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Best Overlapping Windows</span>
-              <span id="best-times-subtitle" class="text-[11px] text-slate-400">Live calculation</span>
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-4 flex flex-col justify-center">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Top Overlapping Windows (Best Meeting Times)
+              </span>
+              <span class="text-[11px] text-slate-400">Auto-calculated from all members</span>
             </div>
-            <div id="best-times-list" class="flex flex-wrap gap-2">
-              <span class="text-xs text-slate-400 italic">Mark availability on the grid below to discover the best meeting times.</span>
+            <div id="best-windows-list" class="flex flex-wrap gap-2">
+              <span class="text-xs text-slate-400 italic">Paint your availability on the grid below to discover overlapping times.</span>
             </div>
           </div>
         </div>
 
-        <!-- Interactive 30-Minute Calendar Grid -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft overflow-hidden">
-          <div class="overflow-x-auto">
-            <div id="calendar-grid-wrapper" class="min-w-[640px] no-select">
-              <!-- Dynamically rendered by JS -->
-            </div>
+        <!-- 30-Minute Increment Calendar Grid -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar relative">
+            <table id="availability-grid" class="w-full border-collapse text-left no-select">
+              <!-- Populated dynamically by JS -->
+            </table>
           </div>
         </div>
       </section>
 
-      <!-- ==================== TAB 2: AI WORKLOAD DELEGATOR ==================== -->
-      <section id="panel-ai" class="hidden space-y-5 animate-fade-in">
+      <!-- ==================== TAB 2: GEMINI AI WORKLOAD DELEGATOR ==================== -->
+      <section id="tab-gemini" class="room-tab-panel hidden space-y-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <!-- Left Column: Assignment Upload & Context -->
-          <div class="lg:col-span-5 space-y-4">
-            <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-5 space-y-4">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-sm">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                </div>
-                <div>
-                  <h2 class="text-base font-bold text-slate-900">Gemini Workload Delegator</h2>
-                  <p class="text-xs text-slate-500">Upload your rubric or prompt to auto-delegate tasks</p>
-                </div>
-              </div>
-
-              <!-- File Dropzone -->
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assignment File (Optional)</label>
-                <label id="file-dropzone" class="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl p-4 cursor-pointer transition text-center">
-                  <input id="ai-file-input" type="file" accept=".txt,.md,.pdf,image/png,image/jpeg,image/webp" class="hidden" />
-                  <svg class="w-7 h-7 text-slate-400 mb-1.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                  <span class="text-xs font-semibold text-slate-700">Click to upload or drag & drop</span>
-                  <span class="text-[11px] text-slate-400 mt-0.5">Supports PDF, PNG, JPG, TXT, MD (max 8MB)</span>
-                </label>
-                <!-- Attached File Pill -->
-                <div id="ai-file-chip" class="hidden mt-2 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200/70 text-xs">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <svg class="w-4 h-4 text-indigo-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    <span id="ai-file-name" class="font-medium text-indigo-900 truncate"></span>
+          <!-- Left Column: Assignment Upload & Prompt Input -->
+          <div class="lg:col-span-5 space-y-5">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                   </div>
-                  <button type="button" id="ai-file-remove" class="text-indigo-500 hover:text-rose-600 font-bold px-1">✕</button>
+                  <div>
+                    <h2 class="text-base font-bold text-slate-900">Gemini Workload Delegator</h2>
+                    <p class="text-xs text-slate-500">Upload rubric/prompt &amp; auto-assign tasks + due dates</p>
+                  </div>
                 </div>
+                <button type="button" id="toggle-gemini-key-btn" class="px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 rounded-lg transition shrink-0" title="Configure Gemini API key for standalone hosting">
+                  API Key
+                </button>
               </div>
 
-              <!-- Paste Assignment Description -->
+              <!-- Optional Gemini API Key Drawer -->
+              <div id="gemini-key-drawer" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                  <label class="text-[11px] font-bold text-slate-700">Gemini API Key (Saved locally in your browser)</label>
+                  <span id="gemini-key-status" class="text-[10px] font-semibold text-slate-500">Using built-in runtime key</span>
+                </div>
+                <div class="flex gap-2">
+                  <input type="password" id="gemini-api-key-input" placeholder="AIzaSy... (optional on Canvas, required on GitHub Pages)" class="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                  <button type="button" id="save-gemini-key-btn" class="px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition">Save</button>
+                </div>
+                <p class="text-[10px] text-slate-500 leading-relaxed">
+                  On GitHub Pages, paste a free key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-indigo-600 underline">Google AI Studio</a>, or leave blank to use SyncSpace's built-in smart task planner fallback.
+                </p>
+              </div>
+
+              <!-- File Upload Dropzone -->
               <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assignment Details / Rubric</label>
-                <textarea id="ai-assignment-text" rows="5" placeholder="Paste your assignment prompt, deliverables, rubric requirements, or milestones here..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"></textarea>
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Upload Assignment Sheet (PDF, Image, TXT, MD)</label>
+                <label id="file-dropzone" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl cursor-pointer bg-slate-50/70 hover:bg-indigo-50/30 transition p-4 text-center">
+                  <svg class="w-7 h-7 text-slate-400 mb-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                  <span class="text-xs font-semibold text-slate-700">Click to upload or drag &amp; drop</span>
+                  <span class="text-[11px] text-slate-400 mt-0.5">Supports PDF documents, screenshots, or text files</span>
+                  <input id="assignment-file-input" type="file" accept=".pdf,.txt,.md,.csv,image/png,image/jpeg,image/webp" class="hidden" />
+                </label>
+
+                <!-- Selected File Pill -->
+                <div id="selected-file-badge" class="hidden mt-2 flex items-center justify-between bg-indigo-50 border border-indigo-200 text-indigo-800 px-3 py-2 rounded-xl text-xs">
+                  <span id="selected-file-name" class="font-medium truncate pr-2">assignment.pdf</span>
+                  <button type="button" id="remove-file-btn" class="text-indigo-500 hover:text-indigo-800 font-bold">✕</button>
+                </div>
               </div>
 
-              <!-- Team Skills / Optional Notes -->
+              <!-- Paste / Additional Instructions -->
               <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Team Preferences / Skills (Optional)</label>
-                <input id="ai-team-notes" type="text" placeholder="e.g. Maya prefers slides & design, Jordan likes data analysis..." class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition" />
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assignment Details / Rubric Prompt</label>
+                <textarea id="assignment-prompt-text" rows="5" placeholder="Paste your assignment instructions, deliverables, or specific member strengths (e.g., 'Alex is great at backend, Maya prefers slides and testing')..." class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-y"></textarea>
               </div>
 
-              <!-- Active Context Summary -->
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-[11px] text-slate-600 space-y-1">
-                <div class="flex justify-between">
-                  <span class="font-semibold text-slate-700">Room Members:</span>
-                  <span id="ai-context-members" class="text-right truncate max-w-[200px]"></span>
+              <!-- Active Members Context -->
+              <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[11px] font-semibold text-slate-600">Delegating Across Room Members:</span>
+                  <span id="gemini-member-count" class="text-[11px] font-bold text-indigo-600">1 Member</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="font-semibold text-slate-700">Final Due Date:</span>
-                  <span id="ai-context-due" class="font-mono text-indigo-600 font-semibold"></span>
-                </div>
+                <div id="gemini-members-pills" class="flex flex-wrap gap-1.5"></div>
               </div>
 
-              <!-- Optional Gemini API Key (useful when hosted externally on GitHub Pages) -->
-              <details id="gemini-api-settings" class="rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs">
-                <summary class="cursor-pointer font-semibold text-slate-600 select-none">API Settings (Required on GitHub Pages / External Hosts)</summary>
-                <div class="mt-2 space-y-1.5">
-                  <input id="gemini-api-key-input" type="password" placeholder="Paste Google AI Studio Gemini API key (AIza...)..." class="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
-                  <p class="text-[10px] text-slate-500">Your key is saved only in this browser. Without a key on external hosts like GitHub Pages, SyncSpace uses its built-in smart planner.</p>
-                </div>
-              </details>
-
-              <button id="ai-generate-btn" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold text-sm shadow-sm transition flex items-center justify-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                <span id="ai-generate-btn-text">Generate Workload Plan</span>
+              <button type="button" id="generate-delegation-btn" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                <span>Generate Workload &amp; Due Dates</span>
               </button>
             </div>
           </div>
 
-          <!-- Right Column: Structured Delegation Proposal & Refinement Chat -->
-          <div class="lg:col-span-7 flex flex-col gap-4">
-            <!-- Proposal Display Card -->
-            <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-5 flex-1 flex flex-col min-h-[420px]">
-              <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <!-- Right Column: AI Output, Refinement Chat & Publish to To-Do Board -->
+          <div class="lg:col-span-7 space-y-5">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs flex flex-col min-h-[460px]">
+              <div class="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
                 <div>
-                  <h3 class="text-base font-bold text-slate-900">Delegation Proposal</h3>
-                  <p id="ai-proposal-subtitle" class="text-xs text-slate-500">Upload an assignment and click Generate to create a balanced plan.</p>
+                  <h3 class="text-base font-bold text-slate-900">Proposed Delegation Plan</h3>
+                  <p class="text-xs text-slate-500">Review tasks, adjust assignments, or ask Gemini to rebalance before publishing.</p>
                 </div>
-                <div id="ai-publish-actions" class="hidden flex items-center gap-2">
-                  <button id="ai-publish-btn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    <span>Publish to Room To-Do List</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Empty State / Loading / Results -->
-              <div id="ai-output-container" class="flex-1 py-4 space-y-4 overflow-y-auto max-h-[540px]">
-                <div class="h-full flex flex-col items-center justify-center text-center py-12 px-4">
-                  <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mb-3">
-                    <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-                  </div>
-                  <h4 class="font-semibold text-slate-800 text-sm mb-1">Ready to Delegate Your Assignment</h4>
-                  <p class="text-xs text-slate-500 max-w-sm">Gemini will analyze your assignment, divide it fairly among all room members, and schedule staggered intermediate due dates leading up to your final deadline.</p>
-                </div>
-              </div>
-
-              <!-- Refinement Chat Bar -->
-              <form id="ai-refine-form" class="hidden pt-3 mt-auto border-t border-slate-100 flex items-center gap-2">
-                <input id="ai-refine-input" type="text" placeholder="Ask Gemini to rebalance, swap tasks, or adjust due dates..." class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition" />
-                <button type="submit" id="ai-refine-btn" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shrink-0">
-                  Refine
+                <button type="button" id="publish-ai-tasks-btn" class="hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs transition flex items-center gap-1.5">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  <span>Publish All to To-Do List</span>
                 </button>
-              </form>
+              </div>
+
+              <!-- Loading State -->
+              <div id="ai-loading-state" class="hidden flex-1 flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-11 h-11 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+                <p class="text-sm font-bold text-slate-800">Gemini is analyzing your assignment...</p>
+                <p class="text-xs text-slate-500 mt-1 max-w-sm">Breaking down deliverables, balancing workload across teammates, and scheduling milestone due dates before your final deadline.</p>
+              </div>
+
+              <!-- Diagnostic / Error Banner -->
+              <div id="ai-diagnostic-banner" class="hidden mt-4 rounded-xl border p-3.5 text-xs space-y-1.5"></div>
+
+              <!-- Empty State -->
+              <div id="ai-empty-state" class="flex-1 flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+                <p class="text-sm font-semibold text-slate-700">No delegation plan generated yet</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm">Upload your assignment file or paste the rubric on the left, then click Generate.</p>
+              </div>
+
+              <!-- Proposed Tasks List -->
+              <div id="ai-proposal-container" class="hidden flex-1 space-y-3 py-4">
+                <div id="ai-summary-box" class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 text-xs text-indigo-950 leading-relaxed"></div>
+                <div id="ai-proposed-tasks-list" class="space-y-2.5"></div>
+              </div>
+
+              <!-- Follow-Up Refinement Input -->
+              <div id="ai-refine-bar" class="hidden pt-3 border-t border-slate-100 mt-auto">
+                <form id="ai-refine-form" class="flex gap-2">
+                  <input type="text" id="ai-refine-input" placeholder="Ask Gemini to adjust (e.g., 'Give Jordan more coding tasks and make due dates earlier')..." class="flex-1 px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+                  <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shrink-0">
+                    Refine Plan
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <!-- ==================== TAB 3: MEMBERS & TO-DO LIST ==================== -->
-      <section id="panel-tasks" class="hidden space-y-5 animate-fade-in">
-        <!-- Host Permission Setting Banner & Actions -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div class="flex items-start gap-3">
-            <div id="perm-icon-box" class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-            </div>
-            <div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <h2 class="text-sm sm:text-base font-bold text-slate-900">Task Completion Permissions</h2>
-                <span id="perm-mode-pill" class="px-2 py-0.5 rounded-full text-[11px] font-semibold"></span>
-              </div>
-              <p id="perm-description" class="text-xs text-slate-500 mt-0.5"></p>
-            </div>
+      <section id="tab-todos" class="room-tab-panel hidden space-y-6">
+        <!-- Top Bar: Host Checkbox Permission Control + Manual Add Task -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <h2 class="text-base font-bold text-slate-900">Team Members &amp; Assigned Deliverables</h2>
+            <p class="text-xs text-slate-500">Track who owns each part of the assignment and check off completed milestones.</p>
           </div>
 
-          <div class="flex items-center gap-3 flex-wrap">
-            <!-- Toggle Switch (Interactive for Host, Read-only for others) -->
-            <div class="flex items-center gap-2.5 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/80">
-              <span class="text-xs font-medium text-slate-600">Strict Ownership</span>
-              <button id="perm-toggle-btn" type="button" role="switch" aria-checked="false" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
-                <span id="perm-toggle-knob" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 translate-x-0"></span>
-              </button>
-              <span class="text-xs font-medium text-slate-600">Open Collab</span>
+          <!-- Host Permission Setting Control -->
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-800">Task Check-Off Rule</span>
+                  <span id="host-only-lock-tag" class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-slate-600">Host Setting</span>
+                </div>
+                <p id="permission-mode-desc" class="text-[11px] text-slate-500">Only the assigned member can check their own boxes</p>
+              </div>
             </div>
 
-            <!-- Add Task Manually Button -->
-            <button id="open-add-task-btn" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-              <span>Add Task</span>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-auto sm:ml-2">
+              <input type="checkbox" id="allow-anyone-check-toggle" class="sr-only peer" />
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 peer-disabled:opacity-50"></div>
+              <span id="toggle-status-label" class="ml-2 text-xs font-semibold text-slate-700">Strict</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Quick Manual Add Task Form -->
+        <form id="manual-add-task-form" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <div class="sm:col-span-5">
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">New Task / Deliverable</label>
+            <input type="text" id="new-task-title" required placeholder="e.g., Draft architecture diagram & API spec" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+          <div class="sm:col-span-3">
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Assign To</label>
+            <select id="new-task-assignee" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Due Date</label>
+            <input type="datetime-local" id="new-task-due" required class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit" class="w-full py-2 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition h-[38px]">
+              + Add Task
             </button>
           </div>
-        </div>
+        </form>
 
-        <!-- Overall Progress Bar -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-soft p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-bold text-slate-700">Overall Assignment Progress</span>
-            <span id="overall-progress-text" class="text-xs font-mono font-semibold text-indigo-600">0 / 0 tasks (0%)</span>
-          </div>
-          <div class="flex-1 max-w-md h-2.5 bg-slate-100 rounded-full overflow-hidden">
-            <div id="overall-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <!-- Members & Their Tasks Grid -->
-        <div id="members-tasks-grid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <!-- Dynamically populated -->
+        <!-- Members & Their To-Do Cards Grid -->
+        <div id="members-todos-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          <!-- Dynamically populated per member -->
         </div>
       </section>
+
     </main>
   </div>
 
-  <!-- ==================== MODAL: INVITE MEMBERS ==================== -->
-  <div id="invite-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-    <div class="bg-white rounded-2xl shadow-float border border-slate-200 w-full max-w-md p-6 animate-fade-in">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-slate-900">Invite Teammates</h3>
-        <button data-close-modal="invite-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">✕</button>
-      </div>
-
-      <div class="space-y-4">
-        <!-- Shareable Link -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Shareable Room Link</label>
-          <div class="flex gap-2">
-            <input id="invite-link-input" type="text" readonly class="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono text-slate-700 focus:outline-none" />
-            <button id="copy-invite-link-btn" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shrink-0">
-              Copy
-            </button>
-          </div>
-        </div>
-
-        <div class="relative flex py-1 items-center">
-          <div class="flex-grow border-t border-slate-200"></div>
-          <span class="flex-shrink mx-3 text-[11px] font-medium text-slate-400">OR EMAIL DIRECTLY</span>
-          <div class="flex-grow border-t border-slate-200"></div>
-        </div>
-
-        <!-- Email Invites -->
-        <form id="invite-email-form" class="space-y-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Teammate Email Addresses</label>
-            <textarea id="invite-emails" rows="2" required placeholder="alex@university.edu, sam@university.edu" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"></textarea>
-            <p class="text-[11px] text-slate-400 mt-1">Separate multiple emails with commas. Opens your email client pre-filled with the link and due date.</p>
-          </div>
-          <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-            <span>Open Pre-filled Email Invite</span>
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== MODAL: HOST POKE MEMBERS ==================== -->
-  <div id="poke-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-    <div class="bg-white rounded-2xl shadow-float border border-slate-200 w-full max-w-md p-6 animate-fade-in">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2">
-          <span class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-          </span>
-          <h3 class="text-lg font-bold text-slate-900">Poke Members for Availability</h3>
-        </div>
-        <button data-close-modal="poke-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">✕</button>
-      </div>
-
-      <form id="poke-form" class="space-y-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Who do you want to poke?</label>
-          <div class="space-y-1.5 max-h-36 overflow-y-auto p-2.5 rounded-xl bg-slate-50 border border-slate-200/80" id="poke-members-list">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">From Date & Time</label>
-            <input id="poke-start" type="datetime-local" required class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">To Date & Time</label>
-            <input id="poke-end" type="datetime-local" required class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500" />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Note (Optional)</label>
-          <input id="poke-note" type="text" placeholder="e.g. Please fill in your Thursday afternoon slots!" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500" />
-        </div>
-
-        <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-sm transition">
-          Send Real-Time Poke
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ==================== MODAL: ADD MANUAL TASK ==================== -->
-  <div id="add-task-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-    <div class="bg-white rounded-2xl shadow-float border border-slate-200 w-full max-w-md p-6 animate-fade-in">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold text-slate-900">Add New Task</h3>
-        <button data-close-modal="add-task-modal" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">✕</button>
-      </div>
-
-      <form id="add-task-form" class="space-y-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Task Title</label>
-          <input id="task-title-input" type="text" required placeholder="e.g. Draft introduction & thesis statement" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Description (Optional)</label>
-          <textarea id="task-desc-input" rows="2" placeholder="Specific details or deliverables..." class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"></textarea>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Assign To</label>
-            <select id="task-assignee-select" required class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"></select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Priority</label>
-            <select id="task-priority-select" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500">
-              <option value="high">High</option>
-              <option value="medium" selected>Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Task Due Date & Time</label>
-          <input id="task-due-input" type="datetime-local" required class="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
-        </div>
-        <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition">
-          Create Task
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ==================== APPLICATION SCRIPT ==================== -->
+  <!-- ==================== FIREBASE & APP SCRIPT ==================== -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore,
       doc,
@@ -685,59 +662,171 @@
       setDoc,
       updateDoc,
       deleteDoc,
+      onSnapshot,
       collection,
-      onSnapshot
+      query,
+      where,
+      getDocs
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // ==================== CONFIG & GLOBAL STATE ====================
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'syncspace-default';
+    // ==================== GLOBAL STATE ====================
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     let db = null;
     let auth = null;
     let useFirebase = false;
 
     const state = {
-      user: null,             // { uid }
+      user: null,
       userName: '',
       roomCode: null,
-      room: null,             // { title, dueDate, hostId, hostName, calendarStartDate, calendarDays, allowAnyoneToCheck, createdAt }
-      members: [],            // [{ id, roomCode, name, isHost, isMock, joinedAt }]
-      availability: {},       // { memberId: { roomCode, memberId, memberName, slots: { "YYYY-MM-DD_HH:MM": true } } }
-      tasks: [],              // [{ id, roomCode, title, description, assigneeId, assigneeName, dueDate, priority, completed, completedBy, createdAt }]
-      pokes: [],              // [{ id, roomCode, fromName, targetMemberIds, startRange, endRange, note, acknowledgedBy: [], createdAt }]
-      unsubscribers: [],
-      countdownInterval: null,
-      storageSyncTimer: null,
-      // Calendar Drag State
+      room: null,
+      members: [],
+      availability: {}, // { memberId: { "YYYY-MM-DD_HH:MM": true } }
+      tasks: [],
+      pokes: [],
+      localMySlots: {}, // Optimistic local cache for smooth dragging
       isDragging: false,
-      dragMode: true,         // true = mark available, false = unmark
-      localMySlots: {},       // optimistic copy of current user's slots
-      // AI Delegator State
-      aiFile: null,           // { name, mimeType, base64, textContent }
-      aiChatHistory: [],      // conversation history for multi-turn refinement
-      aiProposal: null,       // { summary, tasks: [...] }
+      dragMode: true, // true = adding slots, false = removing slots
+      activeTab: 'calendar',
+      aiFile: null, // { name, mimeType, base64 }
+      aiChatHistory: [],
+      aiProposal: null,
       aiLoading: false,
-      // Mock teammate counter
-      mockIndex: 0,
-      lastAiDiagnostic: null
+      lastAiDiagnostic: null,
+      unsubscribers: [],
+      countdownInterval: null
     };
 
-    const APP_VERSION = 'v1.0.2';
-    const LOCAL_STORE_PREFIX = 'syncspace_v1_room_';
-    const GEMINI_KEY_STORAGE = 'syncspace_gemini_api_key';
+    const GEMINI_KEY_STORAGE = 'syncspace_v1_gemini_api_key';
 
-    function loadLocalRoomSnapshot(code) {
-      if (!code) return null;
-      try {
-        const raw = window.localStorage.getItem(LOCAL_STORE_PREFIX + code);
-        if (!raw) return null;
-        return JSON.parse(raw);
-      } catch {
-        return null;
+    // ==================== TOAST / MESSAGE HELPER ====================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-900 text-white border-slate-700',
+        success: 'bg-emerald-600 text-white border-emerald-500',
+        warning: 'bg-amber-500 text-slate-950 border-amber-400',
+        error: 'bg-rose-600 text-white border-rose-500'
+      };
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg border text-xs font-medium flex items-center justify-between gap-3 transition-all duration-200 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${escapeHtml(message)}</span><button class="opacity-75 hover:opacity-100 font-bold">✕</button>`;
+      toast.querySelector('button').onclick = () => toast.remove();
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, 4500);
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function updateSyncStatusUI(mode, label) {
+      const landingBadge = document.getElementById('landing-sync-badge');
+      const roomBadge = document.getElementById('room-sync-badge');
+
+      if (mode === 'cloud') {
+        if (landingBadge) {
+          landingBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200';
+          landingBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>${escapeHtml(label || 'Live Cloud Sync')}`;
+        }
+        if (roomBadge) {
+          roomBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200';
+          roomBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><span>${escapeHtml(label || 'Live Cloud Sync')}</span>`;
+        }
+      } else {
+        if (landingBadge) {
+          landingBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200';
+          landingBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>${escapeHtml(label || 'Local Browser Sync')}`;
+        }
+        if (roomBadge) {
+          roomBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-semibold border border-amber-200';
+          roomBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>${escapeHtml(label || 'Local Sync')}</span>`;
+        }
       }
     }
 
-    function saveLocalRoomSnapshot(code) {
-      if (!code || !state.room) return;
+    // ==================== URL & HOME NAVIGATION ====================
+    function ensureHomeUrl() {
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('room')) {
+          url.searchParams.delete('room');
+        }
+        // Use #/home so static hosts like GitHub Pages never hit 404 on refresh
+        if (!url.hash || url.hash === '#') {
+          url.hash = '#/home';
+        }
+        window.history.replaceState({}, '', url.toString());
+      } catch (e) {
+        console.warn('URL update skipped:', e);
+      }
+    }
+
+    function returnToHomePage() {
+      if (Array.isArray(state.unsubscribers)) {
+        state.unsubscribers.forEach(unsub => {
+          try { if (typeof unsub === 'function') unsub(); } catch {}
+        });
+      }
+      state.unsubscribers = [];
+
+      if (state.countdownInterval) {
+        clearInterval(state.countdownInterval);
+        state.countdownInterval = null;
+      }
+
+      // Reset active room state completely
+      state.roomCode = null;
+      state.room = null;
+      state.members = [];
+      state.availability = {};
+      state.tasks = [];
+      state.pokes = [];
+      state.localMySlots = {};
+      state.aiFile = null;
+      state.aiChatHistory = [];
+      state.aiProposal = null;
+      state.aiLoading = false;
+      state.lastAiDiagnostic = null;
+
+      // Reset form fields and AI UI
+      const createTitle = document.getElementById('create-title');
+      if (createTitle) createTitle.value = '';
+      const createEmails = document.getElementById('create-emails');
+      if (createEmails) createEmails.value = '';
+      const joinCode = document.getElementById('join-code');
+      if (joinCode) joinCode.value = '';
+      const urlBanner = document.getElementById('url-room-banner');
+      if (urlBanner) urlBanner.classList.add('hidden');
+      const aiText = document.getElementById('assignment-prompt-text');
+      if (aiText) aiText.value = '';
+      const fileInput = document.getElementById('assignment-file-input');
+      if (fileInput) fileInput.value = '';
+      const fileBadge = document.getElementById('selected-file-badge');
+      if (fileBadge) fileBadge.classList.add('hidden');
+
+      renderAiProposal();
+      ensureHomeUrl();
+
+      document.getElementById('room-view').classList.add('hidden');
+      document.getElementById('landing-view').classList.remove('hidden');
+    }
+
+    // ==================== LOCAL STORAGE ROOM SYNC FALLBACK ====================
+    function getLocalRoomStorageKey(roomCode) {
+      return `syncspace_v1_room_${roomCode.toUpperCase()}`;
+    }
+
+    function saveLocalRoomSnapshot(roomCode) {
+      if (!roomCode || !state.room) return;
       try {
         const snapshot = {
           room: state.room,
@@ -747,50 +836,88 @@
           pokes: state.pokes,
           updatedAt: Date.now()
         };
-        window.localStorage.setItem(LOCAL_STORE_PREFIX + code, JSON.stringify(snapshot));
-      } catch (err) {
-        console.warn('localStorage save skipped:', err);
+        window.localStorage.setItem(getLocalRoomStorageKey(roomCode), JSON.stringify(snapshot));
+      } catch (e) {
+        console.warn('Local snapshot write skipped:', e);
       }
     }
 
-    function updateSyncStatusUI(mode, label) {
-      const dot = document.getElementById('auth-status-dot');
-      const txt = document.getElementById('auth-status-text');
-      const rDot = document.getElementById('room-sync-dot');
-      const rTxt = document.getElementById('room-sync-text');
-      const rBadge = document.getElementById('room-sync-badge');
-
-      if (mode === 'cloud') {
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        if (txt) txt.textContent = label || 'Live cloud sync active across devices';
-        if (rDot) rDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse';
-        if (rTxt) rTxt.textContent = label || 'Live Cloud Sync';
-        if (rBadge) rBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80';
-      } else {
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-indigo-500';
-        if (txt) txt.textContent = label || 'Local browser sync active (same-device tabs)';
-        if (rDot) rDot.className = 'w-1.5 h-1.5 rounded-full bg-indigo-500';
-        if (rTxt) rTxt.textContent = label || 'Local Sync';
-        if (rBadge) rBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/70';
+    function loadLocalRoomSnapshot(roomCode) {
+      try {
+        const raw = window.localStorage.getItem(getLocalRoomStorageKey(roomCode));
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
       }
     }
 
-    const MOCK_TEAMMATES = [
-      { name: 'Alex Rivera', offset: 1 },
-      { name: 'Priya Sharma', offset: 2 },
-      { name: 'Liam Chen', offset: 3 },
-      { name: 'Sofia Morales', offset: 4 },
-      { name: 'Marcus Brooks', offset: 5 }
-    ];
-
-    // 30-minute time slots from 08:00 to 21:30 (28 slots covering 8:00 AM – 10:00 PM)
-    const TIME_SLOTS = [];
-    for (let h = 8; h < 22; h++) {
-      TIME_SLOTS.push(`${String(h).padStart(2, '0')}:00`);
-      TIME_SLOTS.push(`${String(h).padStart(2, '0')}:30`);
+    function applyLocalSnapshotToState(snapshot) {
+      if (!snapshot || !snapshot.room) return;
+      state.room = snapshot.room;
+      state.members = snapshot.members || [];
+      state.availability = snapshot.availability || {};
+      state.tasks = snapshot.tasks || [];
+      state.pokes = snapshot.pokes || [];
+      if (state.user && state.availability[state.user.uid]) {
+        state.localMySlots = { ...state.availability[state.user.uid] };
+      }
+      renderRoomHeader();
+      renderPokeBanners();
+      renderCalendarGrid();
+      renderBestWindows();
+      renderGeminiMemberPills();
+      renderTodosTab();
     }
 
-    // ==================== INITIALIZATION ====================
+    window.addEventListener('storage', (event) => {
+      if (!state.roomCode) return;
+      if (event.key === getLocalRoomStorageKey(state.roomCode) && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue);
+          applyLocalSnapshotToState(parsed);
+        } catch {}
+      }
+    });
+
+    // ==================== FIRESTORE PATH HELPERS (STRICT RULE 1) ====================
+    function getRoomDocRef(roomCode) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_rooms', roomCode);
+    }
+    function getMembersColRef() {
+      return collection(db, 'artifacts', appId, 'public', 'data', 'syncspace_members');
+    }
+    function getMemberDocRef(roomCode, memberId) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_members', `${roomCode}_${memberId}`);
+    }
+    function getAvailColRef() {
+      return collection(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability');
+    }
+    function getAvailDocRef(roomCode, memberId) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${roomCode}_${memberId}`);
+    }
+    function getTasksColRef() {
+      return collection(db, 'artifacts', appId, 'public', 'data', 'syncspace_tasks');
+    }
+    function getTaskDocRef(taskId) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_tasks', taskId);
+    }
+    function getPokesColRef() {
+      return collection(db, 'artifacts', appId, 'public', 'data', 'syncspace_pokes');
+    }
+    function getPokeDocRef(pokeId) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_pokes', pokeId);
+    }
+
+    // ==================== INITIALIZE FIREBASE AUTH FIRST ====================
+    function withTimeout(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        )
+      ]);
+    }
+
     async function initFirebase() {
       const embeddedFirebaseConfig = {
         apiKey: "AIzaSyAghDBddTJosa29IM65nnohLZs4P--VSnY",
@@ -812,11 +939,11 @@
           db = getFirestore(app);
           auth = getAuth(app);
 
-          // RULE 3: Authenticate FIRST and await it before any Firestore queries
+          // RULE 3: Authenticate FIRST with timeout so UI never hangs
           if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
+            await withTimeout(signInWithCustomToken(auth, __initial_auth_token), 6000, 'Custom token sign-in');
           } else {
-            await signInAnonymously(auth);
+            await withTimeout(signInAnonymously(auth), 6000, 'Anonymous sign-in');
           }
 
           state.user = auth.currentUser || { uid: crypto.randomUUID() };
@@ -828,4 +955,1840 @@
       } catch (err) {
         console.warn('Running in localStorage sync mode:', err.message);
         let localUid = null;
-// ... existing code ... -->
+        try {
+          localUid = window.localStorage.getItem('syncspace_v1_uid');
+          if (!localUid) {
+            localUid = 'local-' + crypto.randomUUID();
+            window.localStorage.setItem('syncspace_v1_uid', localUid);
+          }
+        } catch {
+          localUid = 'local-' + Math.random().toString(36).slice(2, 11);
+        }
+        state.user = { uid: localUid };
+        useFirebase = false;
+        const reason = err?.code || err?.message || 'Auth unavailable';
+        updateSyncStatusUI('local', `Local Sync (${reason})`);
+      }
+    }
+
+    // ==================== DATE & TIME UTILITIES ====================
+    function formatDateYMD(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function parseYMD(ymd) {
+      const [y, m, d] = ymd.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function addDaysYMD(ymd, days) {
+      const dt = parseYMD(ymd);
+      dt.setDate(dt.getDate() + days);
+      return formatDateYMD(dt);
+    }
+
+    function formatShortDay(ymd) {
+      const dt = parseYMD(ymd);
+      return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    function formatTime12(hour, minute) {
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const h12 = hour % 12 === 0 ? 12 : hour % 12;
+      const mStr = String(minute).padStart(2, '0');
+      return `${h12}:${mStr} ${ampm}`;
+    }
+
+    function formatSlotTimeRange(timeKey) {
+      const [h, m] = timeKey.split(':').map(Number);
+      const startStr = formatTime12(h, m);
+      let endH = h;
+      let endM = m + 30;
+      if (endM >= 60) {
+        endH += 1;
+        endM -= 60;
+      }
+      return `${startStr} – ${formatTime12(endH, endM)}`;
+    }
+
+    function toLocalDatetimeInputValue(date) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function isRoomExpired() {
+      if (!state.room || !state.room.dueDate) return false;
+      return new Date(state.room.dueDate).getTime() <= Date.now();
+    }
+
+    function isHost() {
+      return state.room && state.user && state.room.hostId === state.user.uid;
+    }
+
+    // Generate 30-min time slots from 07:00 to 23:30 (34 increments per day)
+    const TIME_SLOTS = [];
+    for (let h = 7; h <= 23; h++) {
+      TIME_SLOTS.push(`${String(h).padStart(2, '0')}:00`);
+      TIME_SLOTS.push(`${String(h).padStart(2, '0')}:30`);
+    }
+
+    // ==================== ROOM CREATION, JOINING & REAL-TIME SYNC ====================
+    function generateRoomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = 'SYNC-';
+      for (let i = 0; i < 4; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return code;
+    }
+
+    function buildRoomUrl(roomCode) {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      url.searchParams.set('room', roomCode);
+      return url.toString();
+    }
+
+    async function createRoom({ hostName, title, dueDate, emailsStr, isDemo = false }) {
+      if (!state.user) {
+        state.user = { uid: 'local-' + Math.random().toString(36).slice(2, 11) };
+      }
+
+      const roomCode = generateRoomCode();
+      const todayYMD = formatDateYMD(new Date());
+      const dueIso = new Date(dueDate).toISOString();
+
+      const roomData = {
+        roomCode,
+        title,
+        dueDate: dueIso,
+        hostId: state.user.uid,
+        hostName,
+        allowAnyoneToCheck: false,
+        calStartDate: todayYMD,
+        calDays: 7,
+        createdAt: Date.now()
+      };
+
+      const hostMember = {
+        id: state.user.uid,
+        roomCode,
+        name: hostName,
+        isHost: true,
+        isMock: false,
+        joinedAt: Date.now()
+      };
+
+      state.userName = hostName;
+      state.roomCode = roomCode;
+      state.room = roomData;
+      state.members = [hostMember];
+      state.availability = { [state.user.uid]: {} };
+      state.localMySlots = {};
+      state.tasks = [];
+      state.pokes = [];
+
+      if (useFirebase && db) {
+        try {
+          await withTimeout(setDoc(getRoomDocRef(roomCode), roomData), 5000, 'Create room');
+          await withTimeout(setDoc(getMemberDocRef(roomCode, state.user.uid), hostMember), 5000, 'Join member');
+          await withTimeout(setDoc(getAvailDocRef(roomCode, state.user.uid), {
+            roomCode,
+            memberId: state.user.uid,
+            slots: {}
+          }), 5000, 'Init availability');
+        } catch (fbErr) {
+          console.warn('Firestore write failed, switching to Local Sync:', fbErr);
+          useFirebase = false;
+          updateSyncStatusUI('local', `Local Sync (${fbErr?.code || 'Firestore blocked'})`);
+          showToast('Cloud write blocked — running in Local Sync mode. Enable Anonymous Auth & Firestore Test Mode in Firebase.', 'warning');
+        }
+      }
+
+      if (isDemo) {
+        await seedDemoTeammates(roomCode, todayYMD, dueIso);
+      }
+
+      saveLocalRoomSnapshot(roomCode);
+      window.history.replaceState({}, '', buildRoomUrl(roomCode));
+      enterRoom(roomCode);
+
+      if (emailsStr && emailsStr.trim()) {
+        triggerMailtoInvite(emailsStr.trim(), title, roomCode, dueIso);
+      }
+    }
+
+    async function seedDemoTeammates(roomCode, startYMD, dueIso) {
+      const demoPeers = [
+        { id: 'peer_maya', name: 'Maya Patel' },
+        { id: 'peer_liam', name: 'Liam Chen' },
+        { id: 'peer_sofia', name: 'Sofia Alvarez' }
+      ];
+
+      const day1 = startYMD;
+      const day2 = addDaysYMD(startYMD, 1);
+      const day3 = addDaysYMD(startYMD, 2);
+
+      const peerSlots = {
+        peer_maya: {
+          [`${day1}_14:00`]: true, [`${day1}_14:30`]: true, [`${day1}_15:00`]: true,
+          [`${day2}_16:00`]: true, [`${day2}_16:30`]: true, [`${day2}_17:00`]: true, [`${day2}_17:30`]: true,
+          [`${day3}_10:00`]: true, [`${day3}_10:30`]: true
+        },
+        peer_liam: {
+          [`${day1}_14:00`]: true, [`${day1}_14:30`]: true,
+          [`${day2}_16:30`]: true, [`${day2}_17:00`]: true, [`${day2}_17:30`]: true, [`${day2}_18:00`]: true,
+          [`${day3}_10:00`]: true, [`${day3}_10:30`]: true, [`${day3}_11:00`]: true
+        },
+        peer_sofia: {
+          [`${day1}_14:30`]: true, [`${day1}_15:00`]: true,
+          [`${day2}_16:30`]: true, [`${day2}_17:00`]: true, [`${day2}_17:30`]: true,
+          [`${day3}_10:30`]: true, [`${day3}_11:00`]: true
+        }
+      };
+
+      const dueMs = new Date(dueIso).getTime();
+      const nowMs = Date.now();
+      const mid1 = new Date(nowMs + (dueMs - nowMs) * 0.35).toISOString();
+      const mid2 = new Date(nowMs + (dueMs - nowMs) * 0.65).toISOString();
+      const mid3 = new Date(nowMs + (dueMs - nowMs) * 0.85).toISOString();
+
+      const sampleTasks = [
+        {
+          id: `task_${crypto.randomUUID().slice(0, 8)}`,
+          roomCode,
+          title: 'Literature Review & Problem Statement Outline',
+          assigneeId: state.user.uid,
+          assigneeName: state.userName,
+          dueDate: mid1,
+          completed: true,
+          createdAt: nowMs - 3000
+        },
+        {
+          id: `task_${crypto.randomUUID().slice(0, 8)}`,
+          roomCode,
+          title: 'System Architecture Diagram & Core Data Pipeline',
+          assigneeId: 'peer_liam',
+          assigneeName: 'Liam Chen',
+          dueDate: mid2,
+          completed: false,
+          createdAt: nowMs - 2000
+        },
+        {
+          id: `task_${crypto.randomUUID().slice(0, 8)}`,
+          roomCode,
+          title: 'Benchmark Experiments & Results Visualization',
+          assigneeId: 'peer_maya',
+          assigneeName: 'Maya Patel',
+          dueDate: mid2,
+          completed: false,
+          createdAt: nowMs - 1000
+        },
+        {
+          id: `task_${crypto.randomUUID().slice(0, 8)}`,
+          roomCode,
+          title: 'Final Slide Deck & Executive Summary Proofread',
+          assigneeId: 'peer_sofia',
+          assigneeName: 'Sofia Alvarez',
+          dueDate: mid3,
+          completed: false,
+          createdAt: nowMs
+        }
+      ];
+
+      for (const p of demoPeers) {
+        const mObj = { id: p.id, roomCode, name: p.name, isHost: false, isMock: true, joinedAt: Date.now() };
+        state.members.push(mObj);
+        state.availability[p.id] = peerSlots[p.id];
+        if (useFirebase && db) {
+          try {
+            await setDoc(getMemberDocRef(roomCode, p.id), mObj);
+            await setDoc(getAvailDocRef(roomCode, p.id), { roomCode, memberId: p.id, slots: peerSlots[p.id] });
+          } catch {}
+        }
+      }
+
+      for (const t of sampleTasks) {
+        state.tasks.push(t);
+        if (useFirebase && db) {
+          try {
+            await setDoc(getTaskDocRef(t.id), t);
+          } catch {}
+        }
+      }
+      saveLocalRoomSnapshot(roomCode);
+    }
+
+    async function joinExistingRoom(rawCode, memberName) {
+      if (!state.user) {
+        state.user = { uid: 'local-' + Math.random().toString(36).slice(2, 11) };
+      }
+
+      const roomCode = rawCode.trim().toUpperCase();
+      state.userName = memberName;
+      state.roomCode = roomCode;
+
+      if (useFirebase && db) {
+        try {
+          const roomSnap = await withTimeout(getDoc(getRoomDocRef(roomCode)), 5000, 'Fetch room');
+          if (!roomSnap.exists()) {
+            const localSnap = loadLocalRoomSnapshot(roomCode);
+            if (!localSnap || !localSnap.room) {
+              showToast(`Room "${roomCode}" was not found. Check the code or create a new room.`, 'error');
+              return;
+            }
+            applyLocalSnapshotToState(localSnap);
+          } else {
+            state.room = roomSnap.data();
+          }
+
+          const memberRef = getMemberDocRef(roomCode, state.user.uid);
+          const memberSnap = await getDoc(memberRef);
+          const isRoomHost = state.room.hostId === state.user.uid;
+          await setDoc(memberRef, {
+            id: state.user.uid,
+            roomCode,
+            name: memberName,
+            isHost: isRoomHost,
+            isMock: false,
+            joinedAt: memberSnap.exists() ? memberSnap.data().joinedAt : Date.now()
+          }, { merge: true });
+
+          const availRef = getAvailDocRef(roomCode, state.user.uid);
+          const availSnap = await getDoc(availRef);
+          if (!availSnap.exists()) {
+            await setDoc(availRef, { roomCode, memberId: state.user.uid, slots: {} });
+          }
+        } catch (err) {
+          console.warn('Cloud join fallback to local:', err);
+          const localSnap = loadLocalRoomSnapshot(roomCode);
+          if (!localSnap || !localSnap.room) {
+            showToast(`Could not join room "${roomCode}": ${err.message}`, 'error');
+            return;
+          }
+          applyLocalSnapshotToState(localSnap);
+        }
+      } else {
+        const localSnap = loadLocalRoomSnapshot(roomCode);
+        if (!localSnap || !localSnap.room) {
+          showToast(`Room "${roomCode}" not found in local storage. Create a new room or enable Live Cloud Sync.`, 'error');
+          return;
+        }
+        applyLocalSnapshotToState(localSnap);
+        const existingIdx = state.members.findIndex(m => m.id === state.user.uid);
+        const memberObj = {
+          id: state.user.uid,
+          roomCode,
+          name: memberName,
+          isHost: state.room.hostId === state.user.uid,
+          isMock: false,
+          joinedAt: Date.now()
+        };
+        if (existingIdx >= 0) {
+          state.members[existingIdx] = memberObj;
+        } else {
+          state.members.push(memberObj);
+        }
+        if (!state.availability[state.user.uid]) {
+          state.availability[state.user.uid] = {};
+        }
+        saveLocalRoomSnapshot(roomCode);
+      }
+
+      window.history.replaceState({}, '', buildRoomUrl(roomCode));
+      enterRoom(roomCode);
+    }
+
+    function enterRoom(roomCode) {
+      document.getElementById('landing-view').classList.add('hidden');
+      document.getElementById('room-view').classList.remove('hidden');
+
+      if (state.unsubscribers) {
+        state.unsubscribers.forEach(unsub => {
+          try { if (typeof unsub === 'function') unsub(); } catch {}
+        });
+      }
+      state.unsubscribers = [];
+
+      renderRoomHeader();
+      renderPokeBanners();
+      renderCalendarGrid();
+      renderBestWindows();
+      renderGeminiMemberPills();
+      renderTodosTab();
+
+      if (useFirebase && db && state.user) {
+        // 1. Listen to Room Document
+        const unsubRoom = onSnapshot(getRoomDocRef(roomCode), (snap) => {
+          if (snap.exists()) {
+            state.room = snap.data();
+            renderRoomHeader();
+            renderCalendarGrid();
+            renderTodosTab();
+            saveLocalRoomSnapshot(roomCode);
+          }
+        }, (err) => console.error('Room listener error:', err));
+
+        // 2. Listen to Members Collection (RULE 2: Simple collection query, filter in JS)
+        const unsubMembers = onSnapshot(getMembersColRef(), (snap) => {
+          const list = [];
+          snap.forEach(d => {
+            const data = d.data();
+            if (data.roomCode === roomCode) list.push(data);
+          });
+          list.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+          state.members = list;
+          renderCalendarGrid();
+          renderBestWindows();
+          renderGeminiMemberPills();
+          renderTodosTab();
+          saveLocalRoomSnapshot(roomCode);
+        }, (err) => console.error('Members listener error:', err));
+
+        // 3. Listen to Availability Collection
+        const unsubAvail = onSnapshot(getAvailColRef(), (snap) => {
+          const map = {};
+          snap.forEach(d => {
+            const data = d.data();
+            if (data.roomCode === roomCode) {
+              map[data.memberId] = data.slots || {};
+            }
+          });
+          state.availability = map;
+          if (!state.isDragging && state.user) {
+            state.localMySlots = { ...(map[state.user.uid] || {}) };
+          }
+          renderCalendarGrid();
+          renderBestWindows();
+          saveLocalRoomSnapshot(roomCode);
+        }, (err) => console.error('Availability listener error:', err));
+
+        // 4. Listen to Tasks Collection
+        const unsubTasks = onSnapshot(getTasksColRef(), (snap) => {
+          const list = [];
+          snap.forEach(d => {
+            const data = d.data();
+            if (data.roomCode === roomCode) list.push(data);
+          });
+          list.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+          state.tasks = list;
+          renderTodosTab();
+          saveLocalRoomSnapshot(roomCode);
+        }, (err) => console.error('Tasks listener error:', err));
+
+        // 5. Listen to Pokes Collection
+        const unsubPokes = onSnapshot(getPokesColRef(), (snap) => {
+          const list = [];
+          snap.forEach(d => {
+            const data = d.data();
+            if (data.roomCode === roomCode) list.push(data);
+          });
+          list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          state.pokes = list;
+          renderPokeBanners();
+          saveLocalRoomSnapshot(roomCode);
+        }, (err) => console.error('Pokes listener error:', err));
+
+        state.unsubscribers.push(unsubRoom, unsubMembers, unsubAvail, unsubTasks, unsubPokes);
+      }
+
+      // Live Countdown Timer
+      if (state.countdownInterval) clearInterval(state.countdownInterval);
+      updateCountdownDisplay();
+      state.countdownInterval = setInterval(updateCountdownDisplay, 15000);
+
+      // Default due date for manual task input
+      const newTaskDue = document.getElementById('new-task-due');
+      if (newTaskDue && state.room && state.room.dueDate) {
+        const roomDue = new Date(state.room.dueDate);
+        const suggested = new Date(Math.max(Date.now() + 3600000, roomDue.getTime() - 24 * 3600000));
+        newTaskDue.value = toLocalDatetimeInputValue(suggested);
+      }
+    }
+
+    // ==================== HEADER & COUNTDOWN RENDERING ====================
+    function renderRoomHeader() {
+      if (!state.room) return;
+      document.getElementById('room-title-display').textContent = state.room.title;
+      document.getElementById('room-code-badge').textContent = state.room.roomCode;
+
+      const hostFlag = isHost();
+      const roleBadge = document.getElementById('role-badge');
+      roleBadge.textContent = hostFlag ? 'Host' : 'Member';
+      roleBadge.className = hostFlag
+        ? 'px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-100'
+        : 'px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200';
+
+      const pokeBtn = document.getElementById('open-poke-modal-btn');
+      if (hostFlag) {
+        pokeBtn.classList.remove('hidden');
+      } else {
+        pokeBtn.classList.add('hidden');
+      }
+
+      const dueDt = new Date(state.room.dueDate);
+      document.getElementById('room-due-display').textContent = `Due: ${dueDt.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+      })}`;
+
+      updateCountdownDisplay();
+    }
+
+    function updateCountdownDisplay() {
+      if (!state.room) return;
+      const diff = new Date(state.room.dueDate).getTime() - Date.now();
+      const countdownEl = document.getElementById('room-countdown-display');
+      const expiredBanner = document.getElementById('session-expired-banner');
+
+      if (diff <= 0) {
+        countdownEl.textContent = 'Session Ended (Due Date Reached)';
+        countdownEl.className = 'font-bold text-rose-600';
+        expiredBanner.classList.remove('hidden');
+      } else {
+        expiredBanner.classList.add('hidden');
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const mins = Math.floor((diff / (1000 * 60)) % 60);
+        countdownEl.textContent = `${days}d ${hours}h ${mins}m remaining`;
+        countdownEl.className = days === 0 && hours < 12 ? 'font-bold text-amber-600' : 'font-semibold text-indigo-600';
+      }
+    }
+
+    // ==================== POKE FEATURE (HOST ACTION + LIVE BANNERS) ====================
+    function renderPokeBanners() {
+      const container = document.getElementById('poke-banners-container');
+      if (!state.user || !state.pokes.length) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const activePokes = state.pokes.filter(p => !(p.dismissedBy || []).includes(state.user.uid));
+      if (!activePokes.length) {
+        container.innerHTML = '';
+        return;
+      }
+
+      container.innerHTML = activePokes.map(poke => `
+        <div class="my-2 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+          <div class="flex items-start sm:items-center gap-2.5">
+            <span class="w-7 h-7 rounded-lg bg-amber-400 text-amber-950 flex items-center justify-center shrink-0 font-bold text-xs">!</span>
+            <div class="text-xs">
+              <span class="font-bold text-amber-950">${escapeHtml(poke.senderName || 'Host')} poked the team:</span>
+              <span class="text-amber-900">Please fill in your availability for <strong>${escapeHtml(formatShortDay(poke.startDate))} – ${escapeHtml(formatShortDay(poke.endDate))}</strong> (${escapeHtml(poke.startTime)} to ${escapeHtml(poke.endTime)}).</span>
+              ${poke.note ? `<span class="block text-amber-800 italic mt-0.5">"${escapeHtml(poke.note)}"</span>` : ''}
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <button data-jump-poke="${poke.id}" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-amber-950 font-semibold rounded-lg text-[11px] transition">
+              Jump to Dates
+            </button>
+            <button data-dismiss-poke="${poke.id}" class="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold rounded-lg text-[11px] transition">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('[data-jump-poke]').forEach(btn => {
+        btn.onclick = async () => {
+          const poke = state.pokes.find(p => p.id === btn.dataset.jumpPoke);
+          if (!poke) return;
+          switchRoomTab('calendar');
+          await updateCalendarWindow(poke.startDate, state.room.calDays || 7);
+        };
+      });
+
+      container.querySelectorAll('[data-dismiss-poke]').forEach(btn => {
+        btn.onclick = async () => {
+          const poke = state.pokes.find(p => p.id === btn.dataset.dismissPoke);
+          if (!poke) return;
+          const updatedDismissed = Array.from(new Set([...(poke.dismissedBy || []), state.user.uid]));
+          poke.dismissedBy = updatedDismissed;
+          renderPokeBanners();
+          saveLocalRoomSnapshot(state.roomCode);
+          if (useFirebase && db) {
+            try {
+              await updateDoc(getPokeDocRef(poke.id), { dismissedBy: updatedDismissed });
+            } catch {}
+          }
+        };
+      });
+    }
+
+    // ==================== 30-MINUTE AVAILABILITY CALENDAR & OVERLAP ====================
+    function getEffectiveAvailabilityMap() {
+      const merged = {};
+      for (const [mId, slots] of Object.entries(state.availability)) {
+        merged[mId] = { ...slots };
+      }
+      if (state.user) {
+        merged[state.user.uid] = { ...state.localMySlots };
+      }
+      return merged;
+    }
+
+    function renderCalendarGrid() {
+      if (!state.room) return;
+      const startYMD = state.room.calStartDate || formatDateYMD(new Date());
+      const numDays = Number(state.room.calDays || 7);
+      const days = [];
+      for (let i = 0; i < numDays; i++) {
+        days.push(addDaysYMD(startYMD, i));
+      }
+
+      document.getElementById('cal-range-label').textContent = `${formatShortDay(days[0])} – ${formatShortDay(days[days.length - 1])}`;
+      document.getElementById('cal-num-days').value = String(numDays);
+      document.getElementById('member-count-pill').textContent = `${state.members.length} ${state.members.length === 1 ? 'Member' : 'Members'}`;
+
+      const availMap = getEffectiveAvailabilityMap();
+      const totalMembers = Math.max(1, state.members.length);
+
+      let thead = `
+        <thead class="sticky top-0 z-20 bg-slate-50 border-b border-slate-200 shadow-2xs">
+          <tr>
+            <th class="sticky left-0 z-30 bg-slate-50 px-3 py-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200 w-24 min-w-[90px]">
+              Time
+            </th>
+      `;
+      for (const d of days) {
+        const dt = parseYMD(d);
+        const weekday = dt.toLocaleDateString('en-US', { weekday: 'short' });
+        const monthDay = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        thead += `
+          <th class="px-2 py-2 text-center border-r border-slate-200/80 min-w-[105px]">
+            <div class="text-[11px] font-bold uppercase text-indigo-600">${weekday}</div>
+            <div class="text-xs font-bold text-slate-800">${monthDay}</div>
+          </th>
+        `;
+      }
+      thead += `</tr></thead>`;
+
+      let tbody = `<tbody class="divide-y divide-slate-100">`;
+      for (const timeKey of TIME_SLOTS) {
+        const [h, m] = timeKey.split(':').map(Number);
+        const isHourMark = m === 0;
+        const rowBorder = isHourMark ? 'border-t border-slate-200' : 'border-t border-dashed border-slate-100';
+
+        tbody += `<tr class="${rowBorder}">`;
+        tbody += `
+          <td class="sticky left-0 z-10 bg-white px-3 py-1 text-[11px] font-medium ${isHourMark ? 'text-slate-700 font-semibold' : 'text-slate-400'} border-r border-slate-200 whitespace-nowrap">
+            ${isHourMark ? formatTime12(h, 0) : ':30'}
+          </td>
+        `;
+
+        for (const d of days) {
+          const slotId = `${d}_${timeKey}`;
+          const freeMembers = state.members.filter(mem => availMap[mem.id] && availMap[mem.id][slotId]);
+          const count = freeMembers.length;
+          const isMine = !!(state.user && state.localMySlots[slotId]);
+          const ratio = count / totalMembers;
+
+          let bgClass = 'bg-white hover:bg-slate-50';
+          if (count > 0) {
+            if (ratio >= 1 && state.members.length > 1) {
+              bgClass = 'bg-emerald-600 text-white hover:bg-emerald-500';
+            } else if (ratio >= 0.66) {
+              bgClass = 'bg-emerald-300 text-emerald-950 hover:bg-emerald-400';
+            } else if (ratio >= 0.34) {
+              bgClass = 'bg-emerald-200 text-emerald-950 hover:bg-emerald-300';
+            } else {
+              bgClass = 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200';
+            }
+          }
+
+          tbody += `
+            <td
+              data-slot="${slotId}"
+              data-day="${d}"
+              data-time="${timeKey}"
+              class="cal-slot-cell h-7 px-1.5 border-r border-slate-200/70 cursor-pointer transition-colors relative ${bgClass}"
+            >
+              <div class="flex items-center justify-between h-full pointer-events-none">
+                ${isMine ? `<span class="w-2 h-2 rounded-full ${ratio >= 1 && state.members.length > 1 ? 'bg-white' : 'bg-indigo-600'} shadow-2xs"></span>` : `<span></span>`}
+                ${count > 0 ? `<span class="text-[10px] font-bold">${count}/${state.members.length}</span>` : ''}
+              </div>
+            </td>
+          `;
+        }
+        tbody += `</tr>`;
+      }
+      tbody += `</tbody>`;
+
+      const table = document.getElementById('availability-grid');
+      table.innerHTML = thead + tbody;
+      attachCalendarInteractions();
+    }
+
+    function attachCalendarInteractions() {
+      const cells = document.querySelectorAll('.cal-slot-cell');
+      const tooltip = document.getElementById('slot-tooltip');
+
+      cells.forEach(cell => {
+        cell.addEventListener('mouseenter', (e) => {
+          showSlotTooltip(e, cell.dataset.day, cell.dataset.time, cell.dataset.slot);
+          if (state.isDragging) {
+            applySlotDrag(cell.dataset.slot);
+          }
+        });
+
+        cell.addEventListener('mousemove', (e) => {
+          moveSlotTooltip(e);
+        });
+
+        cell.addEventListener('mouseleave', () => {
+          tooltip.classList.add('hidden');
+        });
+
+        cell.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          if (isRoomExpired()) {
+            showToast('Room session has ended; calendar is locked.', 'warning');
+            return;
+          }
+          const slotId = cell.dataset.slot;
+          state.isDragging = true;
+          state.dragMode = !state.localMySlots[slotId];
+          applySlotDrag(slotId);
+        });
+
+        cell.addEventListener('touchstart', (e) => {
+          if (isRoomExpired()) return;
+          const slotId = cell.dataset.slot;
+          state.isDragging = true;
+          state.dragMode = !state.localMySlots[slotId];
+          applySlotDrag(slotId);
+        }, { passive: true });
+      });
+    }
+
+    document.addEventListener('touchmove', (e) => {
+      if (!state.isDragging) return;
+      const touch = e.touches[0];
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const cell = target && target.closest('.cal-slot-cell');
+      if (cell && cell.dataset.slot) {
+        applySlotDrag(cell.dataset.slot);
+      }
+    }, { passive: true });
+
+    async function finishDragAndSync() {
+      if (!state.isDragging) return;
+      state.isDragging = false;
+      await persistMyAvailability();
+    }
+
+    window.addEventListener('mouseup', finishDragAndSync);
+    window.addEventListener('touchend', finishDragAndSync);
+
+    function applySlotDrag(slotId) {
+      if (state.dragMode) {
+        state.localMySlots[slotId] = true;
+      } else {
+        delete state.localMySlots[slotId];
+      }
+      if (state.user) {
+        state.availability[state.user.uid] = { ...state.localMySlots };
+      }
+      renderCalendarGrid();
+      renderBestWindows();
+    }
+
+    async function persistMyAvailability() {
+      if (!state.roomCode || !state.user) return;
+      state.availability[state.user.uid] = { ...state.localMySlots };
+      saveLocalRoomSnapshot(state.roomCode);
+      if (useFirebase && db) {
+        try {
+          await setDoc(getAvailDocRef(state.roomCode, state.user.uid), {
+            roomCode: state.roomCode,
+            memberId: state.user.uid,
+            slots: state.localMySlots
+          });
+        } catch (err) {
+          console.error('Failed to sync availability:', err);
+        }
+      }
+    }
+
+    function showSlotTooltip(e, dayYMD, timeKey, slotId) {
+      const tooltip = document.getElementById('slot-tooltip');
+      const availMap = getEffectiveAvailabilityMap();
+      const availableMembers = state.members.filter(m => availMap[m.id] && availMap[m.id][slotId]);
+
+      document.getElementById('tooltip-time').textContent = `${formatShortDay(dayYMD)} • ${formatSlotTimeRange(timeKey)}`;
+      document.getElementById('tooltip-count').textContent = `${availableMembers.length} of ${state.members.length} members available`;
+
+      const membersContainer = document.getElementById('tooltip-members');
+      if (availableMembers.length === 0) {
+        membersContainer.innerHTML = `<span class="text-slate-400 italic">No one marked available yet</span>`;
+      } else {
+        membersContainer.innerHTML = availableMembers.map(m => `
+          <span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+            ${escapeHtml(m.name)}${state.user && m.id === state.user.uid ? ' (You)' : ''}
+          </span>
+        `).join('');
+      }
+
+      tooltip.classList.remove('hidden');
+      moveSlotTooltip(e);
+    }
+
+    function moveSlotTooltip(e) {
+      const tooltip = document.getElementById('slot-tooltip');
+      const pad = 14;
+      let left = e.clientX + pad;
+      let top = e.clientY + pad;
+      if (left + 240 > window.innerWidth) left = e.clientX - 240;
+      if (top + 110 > window.innerHeight) top = e.clientY - 110;
+      tooltip.style.left = `${Math.max(8, left)}px`;
+      tooltip.style.top = `${Math.max(8, top)}px`;
+    }
+
+    function renderBestWindows() {
+      const container = document.getElementById('best-windows-list');
+      if (!state.room || !state.members.length) return;
+
+      const availMap = getEffectiveAvailabilityMap();
+      const startYMD = state.room.calStartDate || formatDateYMD(new Date());
+      const numDays = Number(state.room.calDays || 7);
+
+      const candidates = [];
+      for (let i = 0; i < numDays; i++) {
+        const d = addDaysYMD(startYMD, i);
+        for (const t of TIME_SLOTS) {
+          const slotId = `${d}_${t}`;
+          const count = state.members.filter(m => availMap[m.id] && availMap[m.id][slotId]).length;
+          if (count > 0) {
+            candidates.push({ day: d, time: t, count });
+          }
+        }
+      }
+
+      if (!candidates.length) {
+        container.innerHTML = `<span class="text-xs text-slate-400 italic">Paint your availability on the grid below to discover overlapping times.</span>`;
+        return;
+      }
+
+      candidates.sort((a, b) => b.count - a.count || a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
+      const top = candidates.slice(0, 4);
+
+      container.innerHTML = top.map(item => {
+        const isAll = item.count === state.members.length && state.members.length > 1;
+        return `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold ${isAll ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}">
+            <span>${formatShortDay(item.day)}, ${formatTime12(...item.time.split(':').map(Number))}</span>
+            <span class="px-1.5 py-0.2 rounded-md text-[10px] ${isAll ? 'bg-white/20 text-white' : 'bg-emerald-200/80 text-emerald-900'}">
+              ${item.count}/${state.members.length}
+            </span>
+          </span>
+        `;
+      }).join('');
+    }
+
+    async function updateCalendarWindow(newStartDate, newNumDays) {
+      if (!state.room) return;
+      state.room.calStartDate = newStartDate;
+      state.room.calDays = newNumDays;
+      renderCalendarGrid();
+      renderBestWindows();
+      saveLocalRoomSnapshot(state.roomCode);
+
+      if (useFirebase && db && state.roomCode) {
+        try {
+          await updateDoc(getRoomDocRef(state.roomCode), {
+            calStartDate: newStartDate,
+            calDays: newNumDays
+          });
+        } catch {}
+      }
+    }
+
+    // ==================== GEMINI AI WORKLOAD DELEGATOR ====================
+    function getSavedGeminiApiKey() {
+      try {
+        return (window.localStorage.getItem(GEMINI_KEY_STORAGE) || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function updateGeminiKeyStatusUI() {
+      const key = getSavedGeminiApiKey();
+      const statusEl = document.getElementById('gemini-key-status');
+      const inputEl = document.getElementById('gemini-api-key-input');
+      if (inputEl && key && !inputEl.value) {
+        inputEl.value = key;
+      }
+      if (statusEl) {
+        if (key) {
+          statusEl.textContent = `Custom key saved (••••${key.slice(-4)})`;
+          statusEl.className = 'text-[10px] font-semibold text-emerald-700';
+        } else {
+          statusEl.textContent = 'No custom key saved';
+          statusEl.className = 'text-[10px] font-semibold text-slate-500';
+        }
+      }
+    }
+
+    function renderGeminiMemberPills() {
+      const countEl = document.getElementById('gemini-member-count');
+      const pillsEl = document.getElementById('gemini-members-pills');
+      if (!countEl || !pillsEl) return;
+
+      countEl.textContent = `${state.members.length} ${state.members.length === 1 ? 'Member' : 'Members'}`;
+      pillsEl.innerHTML = state.members.map(m => `
+        <span class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700">
+          ${escapeHtml(m.name)}${m.isHost ? ' (Host)' : ''}
+        </span>
+      `).join('');
+    }
+
+    function extractJsonPayloadFromText(rawText) {
+      if (!rawText || typeof rawText !== 'string') {
+        throw new Error('Empty response text from Gemini');
+      }
+      let cleaned = rawText.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      }
+
+      return JSON.parse(cleaned);
+    }
+
+    function buildSmartFallbackDelegation(promptText, refinementNote = '') {
+      const members = state.members.length ? state.members : [{ id: state.user?.uid || 'host', name: state.userName || 'Host' }];
+      const dueMs = state.room?.dueDate ? new Date(state.room.dueDate).getTime() : (Date.now() + 5 * 86400000);
+      const nowMs = Date.now();
+      const span = Math.max(3600000 * 6, dueMs - nowMs);
+
+      const rawLines = (promptText || '')
+        .split(/\r?\n/)
+        .map(l => l.replace(/^[-*•\d.)\s]+/, '').trim())
+        .filter(l => l.length >= 6 && l.length <= 140);
+
+      const taskTitles = rawLines.length >= 2
+        ? rawLines.slice(0, 8)
+        : [
+            `Requirements Breakdown & Project Plan${state.aiFile ? ` (${state.aiFile.name})` : ''}`,
+            'Core Research, Architecture & Primary Deliverable Draft',
+            'Implementation, Analysis & Peer Quality Review',
+            'Final Formatting, Proofread & Submission Package'
+          ];
+
+      const tasks = taskTitles.map((title, idx) => {
+        const assignee = members[idx % members.length];
+        const fraction = Math.min(0.95, 0.25 + (0.7 * (idx + 1)) / taskTitles.length);
+        const taskDue = new Date(nowMs + span * fraction).toISOString();
+        return {
+          title,
+          assigneeName: assignee.name,
+          dueDate: taskDue,
+          rationale: refinementNote
+            ? `Scheduled via SyncSpace Smart Planner (${refinementNote}).`
+            : `Balanced milestone ${idx + 1} of ${taskTitles.length} prior to the final due date.`
+        };
+      });
+
+      return {
+        summary: `Generated ${tasks.length} balanced milestones across ${members.length} team member${members.length === 1 ? '' : 's'} using SyncSpace's built-in planner (add a Gemini API key in "API Key" for full AI document analysis).`,
+        tasks
+      };
+    }
+
+    async function callGeminiWithBackoff(payload) {
+      const apiKey = getSavedGeminiApiKey();
+      const modelName = 'gemini-2.5-flash';
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      const delays = [1000, 2000, 4000];
+      let lastError = null;
+
+      for (let attempt = 0; attempt <= delays.length; attempt++) {
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const responseText = await response.text();
+          let data = null;
+          try {
+            data = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            data = null;
+          }
+
+          if (response.status === 429 && attempt < delays.length) {
+            await new Promise(r => setTimeout(r, delays[attempt]));
+            continue;
+          }
+
+          if (!response.ok) {
+            const apiMsg = data?.error?.message || responseText.slice(0, 220) || response.statusText || 'Unknown error';
+            const apiStatus = data?.error?.status || `HTTP_${response.status}`;
+            const err = new Error(`[${response.status} ${apiStatus}] ${apiMsg}`);
+            err.httpStatus = response.status;
+            err.apiStatus = apiStatus;
+            err.hasCustomKey = Boolean(apiKey);
+            throw err;
+          }
+
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          const textPart = parts.find(p => typeof p.text === 'string' && p.text.trim().length > 0);
+          if (!textPart) {
+            const finishReason = data?.candidates?.[0]?.finishReason || 'NO_CANDIDATES';
+            throw new Error(`Gemini returned no text output (finishReason: ${finishReason}).`);
+          }
+
+          return extractJsonPayloadFromText(textPart.text);
+        } catch (err) {
+          lastError = err;
+          const isRetriableNetwork = !err.httpStatus && attempt < delays.length;
+          if (isRetriableNetwork) {
+            await new Promise(r => setTimeout(r, delays[attempt]));
+          } else {
+            break;
+          }
+        }
+      }
+      throw lastError || new Error('Gemini API request failed with an unknown error.');
+    }
+
+    async function runGeminiDelegation(refinementNote = '') {
+      if (state.aiLoading) return;
+      const promptText = document.getElementById('assignment-prompt-text').value.trim();
+
+      if (!promptText && !state.aiFile && !refinementNote) {
+        showToast('Please upload an assignment file or paste instructions first.', 'warning');
+        return;
+      }
+
+      state.aiLoading = true;
+      state.lastAiDiagnostic = null;
+      document.getElementById('ai-empty-state').classList.add('hidden');
+      document.getElementById('ai-proposal-container').classList.add('hidden');
+      document.getElementById('ai-diagnostic-banner').classList.add('hidden');
+      document.getElementById('publish-ai-tasks-btn').classList.add('hidden');
+      document.getElementById('ai-loading-state').classList.remove('hidden');
+
+      const memberNames = state.members.map(m => m.name);
+      const dueStr = state.room ? state.room.dueDate : new Date(Date.now() + 5 * 86400000).toISOString();
+      const nowStr = new Date().toISOString();
+
+      const systemInstruction = `You are an expert academic & technical project manager bot inside SyncSpace.
+Your job is to break down an assignment into clear, actionable deliverables and delegate them fairly across the team members with realistic, staggered intermediate due dates strictly between NOW (${nowStr}) and the FINAL DUE DATE (${dueStr}).
+
+Team Members: ${JSON.stringify(memberNames)}
+Assignment Title: ${state.room ? state.room.title : 'Group Assignment'}
+
+Respond ONLY with a valid JSON object matching this exact schema (no markdown code blocks):
+{
+  "summary": "Brief 1-2 sentence overview of how the workload was split.",
+  "tasks": [
+    {
+      "title": "Actionable task title",
+      "assigneeName": "Exact name from Team Members list",
+      "dueDate": "ISO-8601 timestamp string before ${dueStr}",
+      "rationale": "Short note on why this fits or milestone order"
+    }
+  ]
+}`;
+
+      const userParts = [];
+      if (!refinementNote) {
+        state.aiChatHistory = [];
+        userParts.push({
+          text: `Please analyze this assignment and delegate tasks with due dates across our team (${memberNames.join(', ')}).\n\nInstructions:\n${promptText || '(See attached assignment file)'}`
+        });
+        if (state.aiFile) {
+          userParts.push({
+            inlineData: {
+              mimeType: state.aiFile.mimeType,
+              data: state.aiFile.base64
+            }
+          });
+        }
+        state.aiChatHistory.push({ role: 'user', parts: userParts });
+      } else {
+        state.aiChatHistory.push({
+          role: 'user',
+          parts: [{ text: `Please refine the previous delegation plan based on this feedback: ${refinementNote}. Keep the exact same JSON format.` }]
+        });
+      }
+
+      const payload = {
+        contents: state.aiChatHistory,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          responseMimeType: 'application/json'
+        }
+      };
+
+      try {
+        const parsed = await callGeminiWithBackoff(payload);
+        if (!parsed || !Array.isArray(parsed.tasks)) {
+          throw new Error('Gemini returned JSON without a valid "tasks" array.');
+        }
+
+        state.aiChatHistory.push({
+          role: 'model',
+          parts: [{ text: JSON.stringify(parsed) }]
+        });
+
+        state.aiProposal = parsed;
+        state.lastAiDiagnostic = {
+          level: 'success',
+          title: 'Gemini AI Plan Ready',
+          detail: `Generated ${parsed.tasks.length} tasks using gemini-2.5-flash.`
+        };
+        renderAiProposal();
+        showToast('Gemini generated a workload & due-date plan!', 'success');
+      } catch (err) {
+        console.error('Gemini delegation error:', err);
+        const hasKey = Boolean(getSavedGeminiApiKey());
+        const isMissingKeyAuth = !hasKey && (err.httpStatus === 400 || err.httpStatus === 403 || err.httpStatus === 401);
+
+        if (isMissingKeyAuth) {
+          const drawer = document.getElementById('gemini-key-drawer');
+          if (drawer) drawer.classList.remove('hidden');
+        }
+
+        const fallbackPlan = buildSmartFallbackDelegation(promptText, refinementNote);
+        state.aiProposal = fallbackPlan;
+        state.lastAiDiagnostic = {
+          level: 'warning',
+          title: isMissingKeyAuth
+            ? 'Gemini API Key Required on Static Hosts (Using Smart Fallback Plan)'
+            : 'Gemini API Error (Using Smart Fallback Plan)',
+          detail: err.message || 'Unknown error occurred while contacting Gemini API.',
+          hint: isMissingKeyAuth
+            ? 'Click "API Key" above and paste a free Google AI Studio key to enable live Gemini PDF/prompt analysis on GitHub Pages.'
+            : 'Check your Gemini API key quota/permissions or network connection. You can still edit and publish the fallback tasks below.'
+        };
+        renderAiProposal();
+        showToast(isMissingKeyAuth ? 'No Gemini API key set — built a smart fallback plan instead.' : `Gemini error: ${err.message}`, 'warning');
+      } finally {
+        state.aiLoading = false;
+        document.getElementById('ai-loading-state').classList.add('hidden');
+      }
+    }
+
+    function renderAiProposal() {
+      const container = document.getElementById('ai-proposal-container');
+      const publishBtn = document.getElementById('publish-ai-tasks-btn');
+      const refineBar = document.getElementById('ai-refine-bar');
+      const diagBanner = document.getElementById('ai-diagnostic-banner');
+      const emptyState = document.getElementById('ai-empty-state');
+
+      if (state.lastAiDiagnostic && diagBanner) {
+        const isWarn = state.lastAiDiagnostic.level === 'warning';
+        diagBanner.className = isWarn
+          ? 'mt-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-3.5 text-xs space-y-1'
+          : 'mt-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 p-3.5 text-xs space-y-1';
+        diagBanner.innerHTML = `
+          <div class="font-bold flex items-center justify-between gap-2">
+            <span>${escapeHtml(state.lastAiDiagnostic.title)}</span>
+            <button type="button" id="dismiss-ai-diag-btn" class="opacity-70 hover:opacity-100 font-bold">✕</button>
+          </div>
+          <div class="font-mono text-[11px] break-words opacity-90">${escapeHtml(state.lastAiDiagnostic.detail)}</div>
+          ${state.lastAiDiagnostic.hint ? `<div class="text-[11px] pt-0.5">${escapeHtml(state.lastAiDiagnostic.hint)}</div>` : ''}
+        `;
+        diagBanner.classList.remove('hidden');
+        const dismissBtn = document.getElementById('dismiss-ai-diag-btn');
+        if (dismissBtn) dismissBtn.onclick = () => diagBanner.classList.add('hidden');
+      } else if (diagBanner) {
+        diagBanner.classList.add('hidden');
+      }
+
+      if (!state.aiProposal || !state.aiProposal.tasks || !state.aiProposal.tasks.length) {
+        if (container) container.classList.add('hidden');
+        if (publishBtn) publishBtn.classList.add('hidden');
+        if (refineBar) refineBar.classList.add('hidden');
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+      }
+
+      if (emptyState) emptyState.classList.add('hidden');
+      container.classList.remove('hidden');
+      publishBtn.classList.remove('hidden');
+      refineBar.classList.remove('hidden');
+
+      document.getElementById('ai-summary-box').innerHTML = `
+        <span class="font-bold text-indigo-900">Plan Summary:</span> ${escapeHtml(state.aiProposal.summary || 'Tasks delegated across your team.')}
+      `;
+
+      const listEl = document.getElementById('ai-proposed-tasks-list');
+      listEl.innerHTML = state.aiProposal.tasks.map((t, idx) => {
+        const dueFormatted = new Date(t.dueDate).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+        });
+
+        const memberOptions = state.members.map(m =>
+          `<option value="${escapeHtml(m.name)}" ${m.name.toLowerCase() === (t.assigneeName || '').toLowerCase() ? 'selected' : ''}>${escapeHtml(m.name)}</option>`
+        ).join('');
+
+        return `
+          <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="space-y-1 min-w-0 flex-1">
+              <div class="font-semibold text-sm text-slate-900">${escapeHtml(t.title)}</div>
+              ${t.rationale ? `<p class="text-[11px] text-slate-500">${escapeHtml(t.rationale)}</p>` : ''}
+              <div class="text-[11px] font-medium text-indigo-600">Target Due: ${dueFormatted}</div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <select data-ai-assignee-idx="${idx}" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white text-slate-800">
+                ${memberOptions}
+              </select>
+              <button type="button" data-ai-remove-idx="${idx}" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition" title="Remove task">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      listEl.querySelectorAll('[data-ai-assignee-idx]').forEach(sel => {
+        sel.onchange = () => {
+          const idx = Number(sel.dataset.aiAssigneeIdx);
+          state.aiProposal.tasks[idx].assigneeName = sel.value;
+        };
+      });
+
+      listEl.querySelectorAll('[data-ai-remove-idx]').forEach(btn => {
+        btn.onclick = () => {
+          const idx = Number(btn.dataset.aiRemoveIdx);
+          state.aiProposal.tasks.splice(idx, 1);
+          renderAiProposal();
+        };
+      });
+    }
+
+    async function publishAiTasksToRoom() {
+      if (!state.aiProposal || !state.aiProposal.tasks || !state.aiProposal.tasks.length) return;
+      if (isRoomExpired()) {
+        showToast('Room session has ended; cannot add tasks.', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('publish-ai-tasks-btn');
+      btn.disabled = true;
+
+      try {
+        for (const item of state.aiProposal.tasks) {
+          const matchedMember = state.members.find(
+            m => m.name.toLowerCase() === (item.assigneeName || '').toLowerCase()
+          ) || state.members[0];
+
+          const taskId = `task_${crypto.randomUUID().slice(0, 10)}`;
+          const taskObj = {
+            id: taskId,
+            roomCode: state.roomCode,
+            title: item.title,
+            assigneeId: matchedMember ? matchedMember.id : state.user.uid,
+            assigneeName: matchedMember ? matchedMember.name : state.userName,
+            dueDate: item.dueDate || state.room.dueDate,
+            completed: false,
+            createdAt: Date.now()
+          };
+
+          state.tasks.push(taskObj);
+          if (useFirebase && db) {
+            try {
+              await setDoc(getTaskDocRef(taskId), taskObj);
+            } catch {}
+          }
+        }
+
+        saveLocalRoomSnapshot(state.roomCode);
+        renderTodosTab();
+        showToast(`Published ${state.aiProposal.tasks.length} tasks to the team To-Do List!`, 'success');
+        switchRoomTab('todos');
+      } catch (err) {
+        console.error('Publish AI tasks error:', err);
+        showToast('Failed to publish tasks.', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ==================== MEMBERS & TO-DO LIST WITH HOST CHECKBOX PERMISSIONS ====================
+    function renderTodosTab() {
+      if (!state.room) return;
+
+      document.getElementById('todo-count-badge').textContent = String(state.tasks.length);
+
+      const allowAnyone = !!state.room.allowAnyoneToCheck;
+      const toggle = document.getElementById('allow-anyone-check-toggle');
+      const toggleLabel = document.getElementById('toggle-status-label');
+      const descEl = document.getElementById('permission-mode-desc');
+      const lockTag = document.getElementById('host-only-lock-tag');
+
+      toggle.checked = allowAnyone;
+      toggle.disabled = !isHost() || isRoomExpired();
+
+      if (allowAnyone) {
+        toggleLabel.textContent = 'Anyone Can Check';
+        descEl.textContent = 'Open mode: Any member can check or uncheck any teammate’s box';
+      } else {
+        toggleLabel.textContent = 'Assignee Only';
+        descEl.textContent = 'Strict mode: Only the assigned member can check off their own boxes';
+      }
+
+      lockTag.textContent = isHost() ? 'You are Host' : 'Host Controlled';
+
+      const assigneeSelect = document.getElementById('new-task-assignee');
+      const prevSelected = assigneeSelect.value;
+      assigneeSelect.innerHTML = state.members.map(m =>
+        `<option value="${m.id}">${escapeHtml(m.name)}${state.user && m.id === state.user.uid ? ' (You)' : ''}</option>`
+      ).join('');
+      if (prevSelected && state.members.some(m => m.id === prevSelected)) {
+        assigneeSelect.value = prevSelected;
+      }
+
+      const grid = document.getElementById('members-todos-grid');
+      const expired = isRoomExpired();
+
+      grid.innerHTML = state.members.map(member => {
+        const memberTasks = state.tasks.filter(t => t.assigneeId === member.id);
+        const completedCount = memberTasks.filter(t => t.completed).length;
+        const pct = memberTasks.length ? Math.round((completedCount / memberTasks.length) * 100) : 0;
+        const isCurrentUser = state.user && member.id === state.user.uid;
+
+        const tasksHtml = memberTasks.length === 0
+          ? `<div class="text-xs text-slate-400 italic py-4 text-center border border-dashed border-slate-200 rounded-xl">No tasks assigned yet</div>`
+          : memberTasks.map(task => {
+              const canToggle = !expired && (allowAnyone || isCurrentUser);
+              const dueDt = new Date(task.dueDate);
+              const isOverdue = !task.completed && dueDt.getTime() < Date.now();
+
+              return `
+                <div class="group p-3 rounded-xl border ${task.completed ? 'bg-slate-50/80 border-slate-200/80' : 'bg-white border-slate-200 hover:border-indigo-300'} transition flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    data-toggle-task="${task.id}"
+                    ${task.completed ? 'checked' : ''}
+                    ${canToggle ? '' : 'disabled'}
+                    title="${canToggle ? 'Toggle completion' : 'Locked: Only ' + escapeHtml(member.name) + ' can check this box'}"
+                    class="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 ${canToggle ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs sm:text-sm font-medium leading-snug ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}">
+                      ${escapeHtml(task.title)}
+                    </p>
+                    <div class="flex items-center gap-2 mt-1 flex-wrap">
+                      <span class="text-[11px] ${isOverdue ? 'text-rose-600 font-semibold' : 'text-slate-400'}">
+                        Due ${dueDt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                      ${!canToggle && !expired ? `<span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-500">Locked</span>` : ''}
+                    </div>
+                  </div>
+                  ${(isHost() || isCurrentUser) && !expired ? `
+                    <button type="button" data-delete-task="${task.id}" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 text-xs p-1 transition" title="Delete task">
+                      ✕
+                    </button>
+                  ` : ''}
+                </div>
+              `;
+            }).join('');
+
+        return `
+          <div class="bg-white rounded-2xl border ${isCurrentUser ? 'border-indigo-200 ring-1 ring-indigo-500/10' : 'border-slate-200'} p-5 shadow-xs flex flex-col justify-between space-y-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="w-9 h-9 rounded-xl ${isCurrentUser ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'} flex items-center justify-center font-bold text-sm shrink-0">
+                    ${escapeHtml(member.name.charAt(0).toUpperCase())}
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                      <h3 class="font-bold text-sm text-slate-900 truncate">${escapeHtml(member.name)}</h3>
+                      ${isCurrentUser ? `<span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700">You</span>` : ''}
+                      ${member.isHost ? `<span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800">Host</span>` : ''}
+                    </div>
+                    <p class="text-[11px] text-slate-500">${completedCount} of ${memberTasks.length} completed</p>
+                  </div>
+                </div>
+                <span class="text-xs font-bold ${pct === 100 && memberTasks.length > 0 ? 'text-emerald-600' : 'text-slate-600'}">${pct}%</span>
+              </div>
+
+              <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full ${pct === 100 && memberTasks.length > 0 ? 'bg-emerald-500' : 'bg-indigo-600'} transition-all duration-300" style="width: ${pct}%"></div>
+              </div>
+
+              <div class="space-y-2 pt-1">
+                ${tasksHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      grid.querySelectorAll('[data-toggle-task]').forEach(checkbox => {
+        checkbox.onchange = async () => {
+          const taskId = checkbox.dataset.toggleTask;
+          const task = state.tasks.find(t => t.id === taskId);
+          if (!task) return;
+
+          const canToggle = !isRoomExpired() && (state.room.allowAnyoneToCheck || (state.user && task.assigneeId === state.user.uid));
+          if (!canToggle) {
+            checkbox.checked = task.completed;
+            showToast('Only the assigned teammate can check off this task.', 'warning');
+            return;
+          }
+
+          task.completed = checkbox.checked;
+          renderTodosTab();
+          saveLocalRoomSnapshot(state.roomCode);
+
+          if (useFirebase && db) {
+            try {
+              await updateDoc(getTaskDocRef(taskId), { completed: checkbox.checked });
+            } catch (err) {
+              console.error('Task toggle sync failed:', err);
+            }
+          }
+        };
+      });
+
+      grid.querySelectorAll('[data-delete-task]').forEach(btn => {
+        btn.onclick = async () => {
+          const taskId = btn.dataset.deleteTask;
+          state.tasks = state.tasks.filter(t => t.id !== taskId);
+          renderTodosTab();
+          saveLocalRoomSnapshot(state.roomCode);
+
+          if (useFirebase && db) {
+            try {
+              await deleteDoc(getTaskDocRef(taskId));
+            } catch (err) {
+              console.error('Delete task failed:', err);
+            }
+          }
+        };
+      });
+    }
+
+    // ==================== TAB SWITCHING & MODALS ====================
+    function switchRoomTab(tabName) {
+      state.activeTab = tabName;
+      document.querySelectorAll('.room-tab-btn').forEach(btn => {
+        const active = btn.dataset.tab === tabName;
+        btn.className = active
+          ? 'room-tab-btn px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 whitespace-nowrap flex items-center gap-2 transition'
+          : 'room-tab-btn px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap flex items-center gap-2 transition';
+      });
+      document.querySelectorAll('.room-tab-panel').forEach(panel => {
+        panel.classList.toggle('hidden', panel.id !== `tab-${tabName}`);
+      });
+    }
+
+    function triggerMailtoInvite(emailsStr, title, roomCode, dueIso) {
+      const link = buildRoomUrl(roomCode);
+      const dueFormatted = new Date(dueIso).toLocaleString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
+      const subject = encodeURIComponent(`Join our SyncSpace room: ${title} (${roomCode})`);
+      const body = encodeURIComponent(
+        `Hey team,\n\nI created a SyncSpace room for "${title}".\n` +
+        `This workspace stays active until our due date: ${dueFormatted}.\n\n` +
+        `Click here to join and mark your 30-minute availability:\n${link}\n\n` +
+        `Room Code: ${roomCode}`
+      );
+      window.open(`mailto:${encodeURIComponent(emailsStr)}?subject=${subject}&body=${body}`, '_blank');
+    }
+
+    function populatePokeSelects() {
+      const startSel = document.getElementById('poke-start-time');
+      const endSel = document.getElementById('poke-end-time');
+      const optionsHtml = TIME_SLOTS.map(t => {
+        const [h, m] = t.split(':').map(Number);
+        return `<option value="${formatTime12(h, m)}">${formatTime12(h, m)}</option>`;
+      }).join('');
+      startSel.innerHTML = optionsHtml;
+      endSel.innerHTML = optionsHtml;
+      startSel.value = '9:00 AM';
+      endSel.value = '9:00 PM';
+    }
+
+    // ==================== EVENT WIRING & INITIALIZATION ====================
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Landing logo click -> reset & stay at #/home
+      const landingLogoBtn = document.getElementById('landing-logo-btn');
+      if (landingLogoBtn) {
+        landingLogoBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          returnToHomePage();
+        });
+      }
+
+      // Room logo click -> reset state & return to #/home
+      const leaveRoomBtn = document.getElementById('leave-room-btn');
+      if (leaveRoomBtn) {
+        leaveRoomBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          returnToHomePage();
+        });
+      }
+
+      // Set default due date in Create Room form (3 days from now at 11:59 PM)
+      const defaultDue = new Date(Date.now() + 3 * 86400000);
+      defaultDue.setHours(23, 59, 0, 0);
+      document.getElementById('create-due').value = toLocalDatetimeInputValue(defaultDue);
+
+      // Check URL for ?room=CODE invite parameter, otherwise enforce #/home
+      const params = new URLSearchParams(window.location.search);
+      const urlRoom = params.get('room');
+      if (urlRoom) {
+        const cleanCode = urlRoom.trim().toUpperCase();
+        document.getElementById('url-room-banner').classList.remove('hidden');
+        document.getElementById('url-room-code-text').textContent = cleanCode;
+        document.getElementById('join-code').value = cleanCode;
+      } else {
+        ensureHomeUrl();
+      }
+
+      // Create Room Submit
+      document.getElementById('create-room-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('create-submit-btn');
+        btn.disabled = true;
+        btn.querySelector('span').textContent = 'Creating Room...';
+        try {
+          await createRoom({
+            hostName: document.getElementById('create-name').value.trim(),
+            title: document.getElementById('create-title').value.trim(),
+            dueDate: document.getElementById('create-due').value,
+            emailsStr: document.getElementById('create-emails').value.trim(),
+            isDemo: false
+          });
+        } catch (err) {
+          console.error('Create room error:', err);
+          showToast(`Could not create room: ${err.message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.querySelector('span').textContent = 'Create Room & Launch';
+        }
+      });
+
+      // Join Room Submit
+      document.getElementById('join-room-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('join-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Joining...';
+        try {
+          await joinExistingRoom(
+            document.getElementById('join-code').value,
+            document.getElementById('join-name').value.trim()
+          );
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Join Room';
+        }
+      });
+
+      // Quick Demo Room
+      document.getElementById('demo-room-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Launching Sample Room...';
+        const demoDue = new Date(Date.now() + 4 * 86400000);
+        demoDue.setHours(23, 59, 0, 0);
+        try {
+          await createRoom({
+            hostName: 'Jordan Taylor',
+            title: 'CS 340 Distributed Consensus Capstone',
+            dueDate: toLocalDatetimeInputValue(demoDue),
+            emailsStr: '',
+            isDemo: true
+          });
+          showToast('Sample group room ready! Try hovering on overlapping green slots or running the AI Delegator.', 'success');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Quick Demo: Launch Sample Group Room';
+        }
+      });
+
+      // Copy Room Code Badge
+      document.getElementById('room-code-badge').addEventListener('click', () => {
+        if (!state.roomCode) return;
+        const temp = document.createElement('textarea');
+        temp.value = state.roomCode;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+        showToast(`Copied room code ${state.roomCode}`, 'success');
+      });
+
+      // Simulate Teammate Button
+      document.getElementById('add-sim-member-btn').addEventListener('click', async () => {
+        if (!state.roomCode || isRoomExpired()) return;
+        const sampleNames = ['Alex Rivera', 'Priya Nair', 'Devon Brooks', 'Hannah Kim', 'Marcus Vance', 'Elena Rostova'];
+        const existingNames = new Set(state.members.map(m => m.name));
+        const pick = sampleNames.find(n => !existingNames.has(n)) || `Teammate ${state.members.length + 1}`;
+        const botId = `bot_${crypto.randomUUID().slice(0, 8)}`;
+
+        const startYMD = state.room.calStartDate || formatDateYMD(new Date());
+        const randomSlots = {};
+        for (let d = 0; d < 3; d++) {
+          const day = addDaysYMD(startYMD, d);
+          ['14:00', '14:30', '15:00', '16:30', '17:00', '17:30'].forEach(t => {
+            if (Math.random() > 0.3) randomSlots[`${day}_${t}`] = true;
+          });
+        }
+
+        const newMember = { id: botId, roomCode: state.roomCode, name: pick, isHost: false, isMock: true, joinedAt: Date.now() };
+        state.members.push(newMember);
+        state.availability[botId] = randomSlots;
+        renderCalendarGrid();
+        renderBestWindows();
+        renderGeminiMemberPills();
+        renderTodosTab();
+        saveLocalRoomSnapshot(state.roomCode);
+
+        if (useFirebase && db) {
+          try {
+            await setDoc(getMemberDocRef(state.roomCode, botId), newMember);
+            await setDoc(getAvailDocRef(state.roomCode, botId), { roomCode: state.roomCode, memberId: botId, slots: randomSlots });
+          } catch {}
+        }
+        showToast(`Added simulated teammate "${pick}" with sample availability!`, 'info');
+      });
+
+      // Room Tab Navigation
+      document.querySelectorAll('.room-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchRoomTab(btn.dataset.tab));
+      });
+
+      // Calendar Date Controls
+      document.getElementById('cal-prev-days').addEventListener('click', () => {
+        if (!state.room) return;
+        const days = Number(state.room.calDays || 7);
+        updateCalendarWindow(addDaysYMD(state.room.calStartDate, -days), days);
+      });
+
+      document.getElementById('cal-next-days').addEventListener('click', () => {
+        if (!state.room) return;
+        const days = Number(state.room.calDays || 7);
+        updateCalendarWindow(addDaysYMD(state.room.calStartDate, days), days);
+      });
+
+      document.getElementById('cal-num-days').addEventListener('change', (e) => {
+        if (!state.room) return;
+        updateCalendarWindow(state.room.calStartDate, Number(e.target.value));
+      });
+
+      document.getElementById('clear-my-avail-btn').addEventListener('click', async () => {
+        if (isRoomExpired()) return;
+        state.localMySlots = {};
+        if (state.user) state.availability[state.user.uid] = {};
+        renderCalendarGrid();
+        renderBestWindows();
+        await persistMyAvailability();
+        showToast('Cleared your availability slots.', 'info');
+      });
+
+      // Poke Modal Controls (Host Only)
+      populatePokeSelects();
+      document.getElementById('open-poke-modal-btn').addEventListener('click', () => {
+        if (!isHost()) return;
+        const startYMD = state.room.calStartDate || formatDateYMD(new Date());
+        document.getElementById('poke-start-date').value = startYMD;
+        document.getElementById('poke-end-date').value = addDaysYMD(startYMD, (state.room.calDays || 7) - 1);
+        document.getElementById('poke-modal').classList.remove('hidden');
+      });
+      document.getElementById('close-poke-modal').addEventListener('click', () => document.getElementById('poke-modal').classList.add('hidden'));
+      document.getElementById('cancel-poke-btn').addEventListener('click', () => document.getElementById('poke-modal').classList.add('hidden'));
+
+      document.getElementById('poke-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!isHost() || !state.roomCode) return;
+
+        const pokeId = `poke_${crypto.randomUUID().slice(0, 10)}`;
+        const pokeObj = {
+          id: pokeId,
+          roomCode: state.roomCode,
+          senderId: state.user.uid,
+          senderName: state.userName,
+          startDate: document.getElementById('poke-start-date').value,
+          endDate: document.getElementById('poke-end-date').value,
+          startTime: document.getElementById('poke-start-time').value,
+          endTime: document.getElementById('poke-end-time').value,
+          note: document.getElementById('poke-note').value.trim(),
+          dismissedBy: [state.user.uid],
+          createdAt: Date.now()
+        };
+
+        state.pokes.unshift(pokeObj);
+        renderPokeBanners();
+        saveLocalRoomSnapshot(state.roomCode);
+        document.getElementById('poke-modal').classList.add('hidden');
+        document.getElementById('poke-note').value = '';
+
+        if (useFirebase && db) {
+          try {
+            await setDoc(getPokeDocRef(pokeId), pokeObj);
+          } catch {}
+        }
+        showToast('Poke alert sent to all room members!', 'success');
+      });
+
+      // Invite / Email Modal Controls
+      document.getElementById('open-invite-btn').addEventListener('click', () => {
+        if (!state.roomCode) return;
+        document.getElementById('invite-link-input').value = buildRoomUrl(state.roomCode);
+        document.getElementById('invite-modal').classList.remove('hidden');
+      });
+      document.getElementById('close-invite-modal').addEventListener('click', () => document.getElementById('invite-modal').classList.add('hidden'));
+
+      document.getElementById('copy-invite-link-btn').addEventListener('click', () => {
+        const input = document.getElementById('invite-link-input');
+        input.select();
+        document.execCommand('copy');
+        showToast('Room invite link copied to clipboard!', 'success');
+      });
+
+      document.getElementById('send-email-invite-btn').addEventListener('click', () => {
+        const emails = document.getElementById('invite-emails-input').value.trim();
+        if (!emails) {
+          showToast('Enter at least one teammate email address.', 'warning');
+          return;
+        }
+        triggerMailtoInvite(emails, state.room.title, state.roomCode, state.room.dueDate);
+      });
+
+      // Gemini API Key Settings Drawer
+      updateGeminiKeyStatusUI();
+      document.getElementById('toggle-gemini-key-btn').addEventListener('click', () => {
+        document.getElementById('gemini-key-drawer').classList.toggle('hidden');
+        updateGeminiKeyStatusUI();
+      });
+
+      document.getElementById('save-gemini-key-btn').addEventListener('click', () => {
+        const val = document.getElementById('gemini-api-key-input').value.trim();
+        try {
+          if (val) {
+            window.localStorage.setItem(GEMINI_KEY_STORAGE, val);
+            showToast('Gemini API key saved locally in your browser.', 'success');
+          } else {
+            window.localStorage.removeItem(GEMINI_KEY_STORAGE);
+            showToast('Cleared custom Gemini API key.', 'info');
+          }
+        } catch {}
+        updateGeminiKeyStatusUI();
+      });
+
+      // File Upload for Gemini Delegator
+      const fileInput = document.getElementById('assignment-file-input');
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 8 * 1024 * 1024) {
+          showToast('File is too large (max 8MB).', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          state.aiFile = {
+            name: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            base64
+          };
+          document.getElementById('selected-file-name').textContent = file.name;
+          document.getElementById('selected-file-badge').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      });
+
+      document.getElementById('remove-file-btn').addEventListener('click', () => {
+        state.aiFile = null;
+        fileInput.value = '';
+        document.getElementById('selected-file-badge').classList.add('hidden');
+      });
+
+      document.getElementById('generate-delegation-btn').addEventListener('click', () => runGeminiDelegation(''));
+      document.getElementById('ai-refine-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('ai-refine-input');
+        const note = input.value.trim();
+        if (!note) return;
+        input.value = '';
+        runGeminiDelegation(note);
+      });
+      document.getElementById('publish-ai-tasks-btn').addEventListener('click', publishAiTasksToRoom);
+
+      // Host Checkbox Permission Toggle
+      document.getElementById('allow-anyone-check-toggle').addEventListener('change', async (e) => {
+        if (!isHost()) {
+          e.target.checked = !!state.room.allowAnyoneToCheck;
+          showToast('Only the room host can change task check-off permissions.', 'warning');
+          return;
+        }
+        const newVal = e.target.checked;
+        state.room.allowAnyoneToCheck = newVal;
+        renderTodosTab();
+        saveLocalRoomSnapshot(state.roomCode);
+
+        if (useFirebase && db && state.roomCode) {
+          try {
+            await updateDoc(getRoomDocRef(state.roomCode), { allowAnyoneToCheck: newVal });
+          } catch (err) {
+            console.error('Permission toggle sync failed:', err);
+          }
+        }
+        showToast(newVal ? 'Anyone can now check off any teammate’s tasks.' : 'Restricted: Only assignees can check their own boxes.', 'info');
+      });
+
+      // Manual Add Task Form
+      document.getElementById('manual-add-task-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (isRoomExpired()) {
+          showToast('Room session has ended; cannot add tasks.', 'warning');
+          return;
+        }
+        const title = document.getElementById('new-task-title').value.trim();
+        const assigneeId = document.getElementById('new-task-assignee').value;
+        const dueVal = document.getElementById('new-task-due').value;
+        if (!title || !assigneeId || !dueVal) return;
+
+        const member = state.members.find(m => m.id === assigneeId) || state.members[0];
+        const taskId = `task_${crypto.randomUUID().slice(0, 10)}`;
+        const taskObj = {
+          id: taskId,
+          roomCode: state.roomCode,
+          title,
+          assigneeId: member.id,
+          assigneeName: member.name,
+          dueDate: new Date(dueVal).toISOString(),
+          completed: false,
+          createdAt: Date.now()
+        };
+
+        document.getElementById('new-task-title').value = '';
+        state.tasks.push(taskObj);
+        renderTodosTab();
+        saveLocalRoomSnapshot(state.roomCode);
+
+        if (useFirebase && db) {
+          try {
+            await setDoc(getTaskDocRef(taskId), taskObj);
+          } catch {}
+        }
+        showToast(`Assigned task to ${member.name}`, 'success');
+      });
+
+      // Initialize Firebase Auth in background/after UI listeners are active
+      await initFirebase();
+    });
+  </script>
+</body>
+</html>
