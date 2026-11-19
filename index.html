@@ -228,6 +228,10 @@
                 <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
               <span id="header-role-badge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"></span>
+              <span id="room-sync-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
+                <span id="room-sync-dot" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span id="room-sync-text">Syncing</span>
+              </span>
             </div>
             <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
               <span>Signed in as <strong id="header-user-name" class="text-slate-700"></strong></span>
@@ -426,6 +430,15 @@
                   <span id="ai-context-due" class="font-mono text-indigo-600 font-semibold"></span>
                 </div>
               </div>
+
+              <!-- Optional Gemini API Key (useful when hosted externally on GitHub Pages) -->
+              <details class="rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs">
+                <summary class="cursor-pointer font-semibold text-slate-600 select-none">API Settings (Optional for GitHub Pages)</summary>
+                <div class="mt-2 space-y-1.5">
+                  <input id="gemini-api-key-input" type="password" placeholder="Paste Gemini API key (optional)..." class="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+                  <p class="text-[10px] text-slate-400">Leave blank in preview mode. If hosted on GitHub Pages without a key, SyncSpace can still generate a smart rule-based breakdown.</p>
+                </div>
+              </details>
 
               <button id="ai-generate-btn" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold text-sm shadow-sm transition flex items-center justify-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
@@ -688,6 +701,7 @@
       pokes: [],              // [{ id, roomCode, fromName, targetMemberIds, startRange, endRange, note, acknowledgedBy: [], createdAt }]
       unsubscribers: [],
       countdownInterval: null,
+      storageSyncTimer: null,
       // Calendar Drag State
       isDragging: false,
       dragMode: true,         // true = mark available, false = unmark
@@ -700,6 +714,57 @@
       // Mock teammate counter
       mockIndex: 0
     };
+
+    const LOCAL_STORE_PREFIX = 'syncspace_v1_room_';
+
+    function loadLocalRoomSnapshot(code) {
+      try {
+        const raw = window.localStorage.getItem(LOCAL_STORE_PREFIX + code);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function saveLocalRoomSnapshot(code) {
+      if (!code || !state.room) return;
+      try {
+        const snapshot = {
+          room: state.room,
+          members: state.members,
+          availability: state.availability,
+          tasks: state.tasks,
+          pokes: state.pokes,
+          updatedAt: Date.now()
+        };
+        window.localStorage.setItem(LOCAL_STORE_PREFIX + code, JSON.stringify(snapshot));
+      } catch (err) {
+        console.warn('localStorage save skipped:', err);
+      }
+    }
+
+    function updateSyncStatusUI(mode, label) {
+      const dot = document.getElementById('auth-status-dot');
+      const txt = document.getElementById('auth-status-text');
+      const rDot = document.getElementById('room-sync-dot');
+      const rTxt = document.getElementById('room-sync-text');
+      const rBadge = document.getElementById('room-sync-badge');
+
+      if (mode === 'cloud') {
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+        if (txt) txt.textContent = label || 'Live cloud sync active across devices';
+        if (rDot) rDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse';
+        if (rTxt) rTxt.textContent = label || 'Live Cloud Sync';
+        if (rBadge) rBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80';
+      } else {
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-indigo-500';
+        if (txt) txt.textContent = label || 'Local browser sync active (same-device tabs)';
+        if (rDot) rDot.className = 'w-1.5 h-1.5 rounded-full bg-indigo-500';
+        if (rTxt) rTxt.textContent = label || 'Local Sync';
+        if (rBadge) rBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/70';
+      }
+    }
 
     const MOCK_TEAMMATES = [
       { name: 'Alex Rivera', offset: 1 },
@@ -718,8 +783,6 @@
 
     // ==================== INITIALIZATION ====================
     async function initFirebase() {
-      const dot = document.getElementById('auth-status-dot');
-      const txt = document.getElementById('auth-status-text');
       try {
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           const firebaseConfig = JSON.parse(__firebase_config);
@@ -736,17 +799,25 @@
 
           state.user = auth.currentUser || { uid: crypto.randomUUID() };
           useFirebase = true;
-          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-          txt.textContent = 'Real-time cloud sync ready';
+          updateSyncStatusUI('cloud', 'Live Cloud Sync');
         } else {
           throw new Error('No Firebase config provided');
         }
       } catch (err) {
-        console.warn('Running in local in-memory mode:', err.message);
-        state.user = { uid: 'local-' + Math.random().toString(36).slice(2, 10) };
+        console.warn('Running in localStorage sync mode:', err.message);
+        let localUid = null;
+        try {
+          localUid = window.localStorage.getItem('syncspace_v1_uid');
+          if (!localUid) {
+            localUid = 'u-' + Math.random().toString(36).slice(2, 11);
+            window.localStorage.setItem('syncspace_v1_uid', localUid);
+          }
+        } catch {
+          localUid = 'u-' + Math.random().toString(36).slice(2, 11);
+        }
+        state.user = { uid: localUid };
         useFirebase = false;
-        dot.className = 'w-2 h-2 rounded-full bg-indigo-500';
-        txt.textContent = 'Interactive workspace ready';
+        updateSyncStatusUI('local', 'Local Browser Sync');
       }
     }
 
@@ -897,6 +968,27 @@
         clearInterval(state.countdownInterval);
         state.countdownInterval = null;
       }
+      if (state.storageSyncTimer) {
+        clearInterval(state.storageSyncTimer);
+        state.storageSyncTimer = null;
+      }
+    }
+
+    function applyLocalSnapshotToState(snap) {
+      if (!snap || !snap.room) return;
+      state.room = snap.room;
+      state.members = Array.isArray(snap.members) ? snap.members : [];
+      state.availability = snap.availability && typeof snap.availability === 'object' ? snap.availability : {};
+      state.tasks = Array.isArray(snap.tasks) ? snap.tasks : [];
+      state.pokes = Array.isArray(snap.pokes) ? snap.pokes : [];
+      if (!state.isDragging) {
+        state.localMySlots = { ...(state.availability[state.user?.uid]?.slots || {}) };
+      }
+      renderRoomHeader();
+      renderCalendar();
+      renderTasksTab();
+      renderAiContext();
+      renderPokeAlerts();
     }
 
     async function createRoom(name, title, dueDateIso) {
@@ -935,16 +1027,22 @@
         slots: {}
       };
 
+      state.room = roomData;
+      state.members = [memberData];
+      state.availability = { [state.user.uid]: availData };
+      state.tasks = [];
+      state.pokes = [];
+      saveLocalRoomSnapshot(code);
+
       if (useFirebase) {
-        await setDoc(roomDocRef(code), roomData);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_members', `${code}_${state.user.uid}`), memberData);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${code}_${state.user.uid}`), availData);
-      } else {
-        state.room = roomData;
-        state.members = [memberData];
-        state.availability = { [state.user.uid]: availData };
-        state.tasks = [];
-        state.pokes = [];
+        try {
+          await setDoc(roomDocRef(code), roomData);
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_members', `${code}_${state.user.uid}`), memberData);
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${code}_${state.user.uid}`), availData);
+        } catch (err) {
+          console.error('Firestore createRoom fallback:', err);
+          showToast('Saved locally; cloud sync will retry automatically.', 'warning');
+        }
       }
 
       enterRoom(code, name.trim());
@@ -959,37 +1057,70 @@
         return;
       }
 
+      let foundRoom = null;
       if (useFirebase) {
-        const snap = await getDoc(roomDocRef(code));
-        if (!snap.exists()) {
-          showToast(`Room "${code}" not found. Double-check the code or create a new room.`, 'error');
-          return;
+        try {
+          const snap = await getDoc(roomDocRef(code));
+          if (snap.exists()) {
+            foundRoom = snap.data();
+          }
+        } catch (err) {
+          console.warn('Firestore getDoc error, checking local storage:', err);
         }
-        const roomData = snap.data();
-        const memberData = {
-          id: state.user.uid,
+      }
+
+      if (!foundRoom) {
+        const localSnap = loadLocalRoomSnapshot(code);
+        if (localSnap && localSnap.room) {
+          foundRoom = localSnap.room;
+          applyLocalSnapshotToState(localSnap);
+        }
+      }
+
+      if (!foundRoom) {
+        showToast(`Room "${code}" not found. Check the room code or create a new room.`, 'error');
+        return;
+      }
+
+      const memberData = {
+        id: state.user.uid,
+        roomCode: code,
+        name: name.trim(),
+        isHost: foundRoom.hostId === state.user.uid,
+        isMock: false,
+        joinedAt: Date.now()
+      };
+
+      const existingIdx = state.members.findIndex(m => m.id === state.user.uid);
+      if (existingIdx >= 0) state.members[existingIdx] = memberData;
+      else state.members.push(memberData);
+
+      if (!state.availability[state.user.uid]) {
+        state.availability[state.user.uid] = {
           roomCode: code,
-          name: name.trim(),
-          isHost: roomData.hostId === state.user.uid,
-          isMock: false,
-          joinedAt: Date.now()
+          memberId: state.user.uid,
+          memberName: name.trim(),
+          slots: {}
         };
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_members', `${code}_${state.user.uid}`), memberData, { merge: true });
-        // Ensure availability doc exists without wiping existing slots
-        const availRef = doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${code}_${state.user.uid}`);
-        const availSnap = await getDoc(availRef);
-        if (!availSnap.exists()) {
-          await setDoc(availRef, {
-            roomCode: code,
-            memberId: state.user.uid,
-            memberName: name.trim(),
-            slots: {}
-          });
-        }
-      } else {
-        if (!state.room || state.room.code !== code) {
-          showToast(`Room "${code}" not found in local session. Try creating a room or launching Quick Demo.`, 'error');
-          return;
+      }
+      state.room = foundRoom;
+      saveLocalRoomSnapshot(code);
+
+      if (useFirebase) {
+        try {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_members', `${code}_${state.user.uid}`), memberData, { merge: true });
+          const availRef = doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${code}_${state.user.uid}`);
+          const availSnap = await getDoc(availRef);
+          if (!availSnap.exists()) {
+            await setDoc(availRef, {
+              roomCode: code,
+              memberId: state.user.uid,
+              memberName: name.trim(),
+              slots: {}
+            });
+          }
+        } catch (err) {
+          console.warn('Firestore joinRoom sync warning:', err);
         }
       }
 
@@ -1014,16 +1145,22 @@
       document.getElementById('room-view').classList.remove('hidden');
 
       if (useFirebase) {
+        updateSyncStatusUI('cloud', 'Live Cloud Sync');
+
         // 1. Room metadata listener
         const unsubRoom = onSnapshot(roomDocRef(code), (snap) => {
           if (snap.exists()) {
             state.room = snap.data();
+            saveLocalRoomSnapshot(code);
             renderRoomHeader();
             renderCalendar();
             renderTasksTab();
             renderAiContext();
           }
-        }, (err) => console.error('Room listener error:', err));
+        }, (err) => {
+          console.error('Room listener error:', err);
+          updateSyncStatusUI('local', 'Local Fallback');
+        });
 
         // 2. Members listener (fetch collection, filter in memory per RULE 2)
         const unsubMembers = onSnapshot(membersColRef(), (snap) => {
@@ -1034,6 +1171,7 @@
           });
           list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0) || (a.joinedAt || 0) - (b.joinedAt || 0));
           state.members = list;
+          saveLocalRoomSnapshot(code);
           renderRoomHeader();
           renderCalendar();
           renderTasksTab();
@@ -1053,6 +1191,7 @@
           if (!state.isDragging) {
             state.localMySlots = { ...(map[state.user.uid]?.slots || {}) };
           }
+          saveLocalRoomSnapshot(code);
           renderCalendar();
         }, (err) => console.error('Availability listener error:', err));
 
@@ -1065,6 +1204,7 @@
           });
           list.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
           state.tasks = list;
+          saveLocalRoomSnapshot(code);
           renderTasksTab();
         }, (err) => console.error('Tasks listener error:', err));
 
@@ -1077,17 +1217,34 @@
           });
           list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           state.pokes = list;
+          saveLocalRoomSnapshot(code);
           renderPokeAlerts();
         }, (err) => console.error('Pokes listener error:', err));
 
         state.unsubscribers.push(unsubRoom, unsubMembers, unsubAvail, unsubTasks, unsubPokes);
       } else {
+        updateSyncStatusUI('local', 'Local Browser Sync');
+        const snap = loadLocalRoomSnapshot(code);
+        if (snap) {
+          applyLocalSnapshotToState(snap);
+        }
         state.localMySlots = { ...(state.availability[state.user.uid]?.slots || {}) };
         renderRoomHeader();
         renderCalendar();
         renderTasksTab();
         renderAiContext();
         renderPokeAlerts();
+
+        // Cross-tab storage listener + lightweight poll for same-browser sync
+        const onStorageChange = (e) => {
+          if (e.key === LOCAL_STORE_PREFIX + code && e.newValue) {
+            try {
+              applyLocalSnapshotToState(JSON.parse(e.newValue));
+            } catch {}
+          }
+        };
+        window.addEventListener('storage', onStorageChange);
+        state.unsubscribers.push(() => window.removeEventListener('storage', onStorageChange));
       }
 
       startCountdownTimer();
@@ -1140,6 +1297,7 @@
       } else {
         state.members.push(memberData);
         state.availability[mockId] = availData;
+        saveLocalRoomSnapshot(state.roomCode);
         renderRoomHeader();
         renderCalendar();
         renderTasksTab();
@@ -1374,12 +1532,13 @@
         slots: state.localMySlots
       };
       state.availability[state.user.uid] = payload;
+      saveLocalRoomSnapshot(state.roomCode);
       if (useFirebase) {
         try {
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_availability', `${state.roomCode}_${state.user.uid}`), payload);
         } catch (err) {
           console.error('Failed to save availability:', err);
-          showToast('Could not sync availability. Please try again.', 'error');
+          showToast('Saved locally; cloud sync will retry.', 'warning');
         }
       }
     }
@@ -1579,6 +1738,7 @@
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_pokes', pokeId), pokeData);
       } else {
         state.pokes.unshift(pokeData);
+        saveLocalRoomSnapshot(state.roomCode);
         renderPokeAlerts();
       }
 
@@ -1654,6 +1814,7 @@
         });
       } else {
         poke.acknowledgedBy = updatedAck;
+        saveLocalRoomSnapshot(state.roomCode);
         renderPokeAlerts();
       }
       showToast('Poke acknowledged.', 'info');
@@ -1712,8 +1873,9 @@
     }
 
     async function callGeminiWithBackoff(payload, retries = 3) {
-      const apiKey = ""; // Provided automatically in runtime
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+      const customKeyEl = document.getElementById('gemini-api-key-input');
+      const apiKey = customKeyEl ? customKeyEl.value.trim() : "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
@@ -1728,17 +1890,90 @@
               continue;
             }
             const errBody = await res.text();
-            throw new Error(`API ${res.status}: ${errBody.slice(0, 140)}`);
+            let errMsg = `API ${res.status}`;
+            try {
+              const errJson = JSON.parse(errBody);
+              if (errJson?.error?.message) errMsg = errJson.error.message;
+            } catch {}
+            throw new Error(errMsg);
           }
           return await res.json();
         } catch (err) {
-          if (attempt < retries) {
+          if (attempt < retries && !String(err.message || '').includes('API key')) {
             await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
             continue;
           }
           throw err;
         }
       }
+    }
+
+    function extractJsonObject(rawText) {
+      if (!rawText) throw new Error('Empty response text');
+      let cleaned = rawText.trim();
+      // Strip markdown code fences if present
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+        }
+        throw new Error('Could not parse structured JSON from model output');
+      }
+    }
+
+    function buildLocalSmartFallbackPlan(assignmentText, teamNotes) {
+      const members = state.members.length > 0
+        ? state.members
+        : [{ id: state.user?.uid || 'host', name: state.userName || 'Team Lead' }];
+
+      const lines = (assignmentText || '')
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l && !/^grading rubric/i.test(l) && !/^deliverables:?$/i.test(l));
+
+      // Extract numbered/bulleted items or create balanced phases
+      let items = lines
+        .filter(l => /^(\d+[\.\)]|[-*•])\s+/.test(l))
+        .map(l => l.replace(/^(\d+[\.\)]|[-*•])\s+/, '').trim());
+
+      if (items.length < 2) {
+        items = [
+          'Research, outline, and gather core sources for ' + (state.room?.title || 'the assignment'),
+          'Draft main content, analysis, and supporting evidence',
+          'Build visuals, formatting, and presentation materials',
+          'Full team review, proofreading, and final submission check'
+        ];
+      }
+
+      const nowMs = Date.now();
+      const dueMs = state.room?.dueDate ? new Date(state.room.dueDate).getTime() : (nowMs + 5 * 86400000);
+      const spanMs = Math.max(3600000, dueMs - nowMs);
+
+      const tasks = items.map((itemText, idx) => {
+        const member = members[idx % members.length];
+        const progressRatio = Math.min(0.92, ((idx + 1) / (items.length + 0.5)));
+        const taskDue = new Date(nowMs + spanMs * progressRatio);
+        return {
+          title: itemText.length > 72 ? itemText.slice(0, 69) + '...' : itemText,
+          description: teamNotes
+            ? `${itemText} (Considered team notes: ${teamNotes})`
+            : `Complete deliverable: ${itemText}`,
+          assigneeId: member.id,
+          assigneeName: member.name,
+          dueDate: toDateTimeLocalValue(taskDue),
+          priority: idx === 0 ? 'high' : (idx === items.length - 1 ? 'high' : 'medium'),
+          estimatedHours: 2
+        };
+      });
+
+      return {
+        summary: `Divided ${tasks.length} deliverables evenly across ${members.length} team member(s) with staggered milestones leading up to ${formatHumanDateTime(state.room?.dueDate)}.`,
+        tasks
+      };
     }
 
     function buildGeminiSystemInstruction() {
@@ -1838,21 +2073,35 @@ Your job:
         };
 
         const result = await callGeminiWithBackoff(payload);
-        const rawText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!rawText) throw new Error('Empty response from Gemini');
+        const textPart = result?.candidates?.[0]?.content?.parts?.find(p => typeof p.text === 'string');
+        const rawText = textPart?.text;
+        if (!rawText) throw new Error('No text returned from Gemini');
 
-        const parsed = JSON.parse(rawText);
+        const parsed = extractJsonObject(rawText);
+        if (!parsed || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
+          throw new Error('Model returned an empty task list');
+        }
+
         state.aiChatHistory.push({ role: 'model', parts: [{ text: rawText }] });
         state.aiProposal = parsed;
         renderAiProposal();
         showToast(isRefinement ? 'Delegation plan refined!' : 'Workload plan generated by Gemini!', 'success');
       } catch (err) {
-        console.error('Gemini delegation error:', err);
-        showToast('Gemini could not generate the plan right now. Please try again.', 'error');
-        // Roll back failed user turn
+        console.warn('Gemini API unavailable or failed, using smart fallback:', err);
         if (state.aiChatHistory.length > 0 && state.aiChatHistory[state.aiChatHistory.length - 1].role === 'user') {
           state.aiChatHistory.pop();
         }
+        // Seamless smart fallback so external hosts (e.g., GitHub Pages without API key) still produce a working plan
+        const fallbackPlan = buildLocalSmartFallbackPlan(
+          assignmentText || state.aiFile?.textContent || state.room?.title || '',
+          isRefinement ? refineText : teamNotes
+        );
+        state.aiProposal = fallbackPlan;
+        renderAiProposal();
+        const reason = String(err.message || '').includes('API key')
+          ? 'Generated using built-in planner (add an API key in API Settings for full Gemini AI).'
+          : `Generated via smart fallback (${err.message || 'API unavailable'}).`;
+        showToast(reason, 'warning');
       } finally {
         state.aiLoading = false;
         setAiLoadingUI(false, isRefinement);
@@ -1990,8 +2239,10 @@ Your job:
             state.tasks.push(taskObj);
           }
         }
-
-        if (!useFirebase) renderTasksTab();
+        if (!useFirebase) {
+          saveLocalRoomSnapshot(state.roomCode);
+          renderTasksTab();
+        }
         showToast(`Published ${state.aiProposal.tasks.length} tasks to the Room To-Do List!`, 'success');
         switchTab('tasks');
       } catch (err) {
@@ -2198,6 +2449,7 @@ Your job:
       } else {
         task.completed = completed;
         task.completedBy = completed ? state.userName : null;
+        saveLocalRoomSnapshot(state.roomCode);
         renderTasksTab();
       }
     }
@@ -2207,6 +2459,7 @@ Your job:
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_tasks', taskId));
       } else {
         state.tasks = state.tasks.filter(t => t.id !== taskId);
+        saveLocalRoomSnapshot(state.roomCode);
         renderTasksTab();
       }
       showToast('Task removed.', 'info');
@@ -2222,6 +2475,7 @@ Your job:
         await updateDoc(roomDocRef(state.roomCode), { allowAnyoneToCheck: nextVal });
       } else {
         state.room.allowAnyoneToCheck = nextVal;
+        saveLocalRoomSnapshot(state.roomCode);
         renderTasksTab();
       }
       showToast(
@@ -2359,6 +2613,7 @@ Your job:
           await updateDoc(roomDocRef(state.roomCode), { calendarStartDate: val });
         } else {
           state.room.calendarStartDate = val;
+          saveLocalRoomSnapshot(state.roomCode);
           renderCalendar();
         }
       });
@@ -2369,6 +2624,7 @@ Your job:
           await updateDoc(roomDocRef(state.roomCode), { calendarDays: val });
         } else {
           state.room.calendarDays = val;
+          saveLocalRoomSnapshot(state.roomCode);
           renderCalendar();
         }
       });
@@ -2458,6 +2714,7 @@ Your job:
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'syncspace_tasks', taskId), taskObj);
         } else {
           state.tasks.push(taskObj);
+          saveLocalRoomSnapshot(state.roomCode);
           renderTasksTab();
         }
         closeModal('add-task-modal');
